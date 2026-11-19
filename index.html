@@ -81,6 +81,20 @@ footer{color:var(--muted);font-size:11px;text-align:center;padding:8px 16px 22px
     <p class="note" style="margin-bottom:0">Manual perspective mapping with a simplified halfway net line. Not automatic line detection or a measured distance.</p>
   </section>
   <section class="panel">
+    <h2>Stage 5 · Movement heatmap</h2>
+    <p class="note">Once the court is calibrated, the selected player's mapped hip position adds samples to the court zones. Brighter zones mean more samples were recorded there.</p>
+    <div style="background:#101b23;border:1px solid var(--line);border-radius:12px;padding:8px">
+      <canvas id="heatmap" width="600" height="360" style="display:block;width:100%;height:auto;max-height:360px"></canvas>
+    </div>
+    <div class="toolbar" style="margin-top:10px">
+      <button id="demoHeatBtn">Preview with sample data</button>
+      <button id="clearHeatBtn">Clear heatmap</button>
+      <span class="note" id="heatSummary">0 court-position samples</span>
+    </div>
+    <p class="note" style="margin-bottom:0">Heatmap data is saved in this browser on this device. Sample preview is illustrative only and is not real player performance data.</p>
+  </section>
+
+  <section class="panel">
     <h2>Selected-player session indicators</h2>
     <div class="metrics">
       <div class="metric"><div class="label">Session time</div><div class="value" id="time">00:00</div></div>
@@ -125,6 +139,36 @@ let stream=null, landmarker=null, running=false, sessionStart=0, timer=null, las
 let frameTimes=[], movementTotal=0, records=[], processing=false, rafId=null;
 let tracks=[], nextId=1, selectedId=null, selectedLastHip=null, selectedSamples=0;
 let calibrationMode=false, courtCorners=[], courtHomography=null, lastCourtPoint=null;
+const HEAT_KEY="badmintonCoachHeatmapV1";
+let heatCounts=loadHeatCounts();
+function loadHeatCounts(){
+  try{const v=JSON.parse(localStorage.getItem(HEAT_KEY)||"null");if(Array.isArray(v)&&v.length===18)return v.map(n=>Number(n)||0);}catch(e){}
+  return Array(18).fill(0);
+}
+function saveHeatCounts(){try{localStorage.setItem(HEAT_KEY,JSON.stringify(heatCounts));}catch(e){}}
+function renderHeatmap(){
+  const c=$("heatmap"),g=c.getContext("2d"),w=c.width,h=c.height;
+  g.clearRect(0,0,w,h);g.fillStyle="#14232d";g.fillRect(0,0,w,h);
+  const max=Math.max(1,...heatCounts),cw=w/3,ch=h/6;
+  for(let row=0;row<6;row++)for(let col=0;col<3;col++){
+    const n=heatCounts[row*3+col],intensity=n/max;
+    g.fillStyle=`rgba(255, ${Math.round(90+120*(1-intensity))}, 75, ${.10+intensity*.78})`;
+    g.fillRect(col*cw+3,row*ch+3,cw-6,ch-6);
+    g.strokeStyle="#d6e2e8";g.lineWidth=2;g.strokeRect(col*cw+3,row*ch+3,cw-6,ch-6);
+    g.fillStyle="#fff";g.font="bold 18px system-ui";g.textAlign="center";
+    g.fillText(["Left","Centre","Right"][col],col*cw+cw/2,row*ch+25);
+    g.font="16px system-ui";g.fillText(String(n)+" samples",col*cw+cw/2,row*ch+ch/2+6);
+  }
+  g.strokeStyle="#ff8fa3";g.lineWidth=5;g.beginPath();g.moveTo(0,h/2);g.lineTo(w,h/2);g.stroke();
+  g.fillStyle="#ffb3c0";g.font="bold 14px system-ui";g.textAlign="left";g.fillText("NET (approx.)",8,h/2-8);
+  const total=heatCounts.reduce((a,b)=>a+b,0);$("heatSummary").textContent=total+" court-position samples";
+}
+function addHeatSample(pt){
+  if(!pt||pt.x<0||pt.x>1||pt.y<0||pt.y>1)return;
+  const col=Math.min(2,Math.floor(pt.x*3)),row=Math.min(5,Math.floor(pt.y*6));
+  heatCounts[row*3+col]++;if((heatCounts.reduce((a,b)=>a+b,0)%10)===0)saveHeatCounts();
+  renderHeatmap();
+}
 const COLORS=["#63e6be","#ffcc66","#7db7ff","#ff8fa3"];
 const MAX_DISTANCE=.22, LOST_AFTER=12;
 
@@ -277,6 +321,11 @@ canvas.addEventListener("click",e=>{
 });
 $("calibrateBtn").addEventListener("click",()=>{courtCorners=[];courtHomography=null;calibrationMode=true;lastCourtPoint=null;$("courtState").textContent="Marking";$("courtSide").textContent="—";$("courtZone").textContent="—";$("courtPosition").textContent="—";$("calibrationStatus").textContent="Mark 4 corners";$("calibrationHelp").textContent="Tap far-left, far-right, near-right, then near-left outer court corner.";drawAll();});
 $("clearCourtBtn").addEventListener("click",()=>{calibrationMode=false;courtCorners=[];courtHomography=null;lastCourtPoint=null;$("courtState").textContent="Off";$("courtSide").textContent="—";$("courtZone").textContent="—";$("courtPosition").textContent="—";$("calibrationStatus").textContent="Court not calibrated";$("calibrationHelp").textContent="Court calibration cleared.";drawAll();});
+$("clearHeatBtn").addEventListener("click",()=>{heatCounts=Array(18).fill(0);saveHeatCounts();renderHeatmap();});
+$("demoHeatBtn").addEventListener("click",()=>{
+  heatCounts=[4,8,3,7,15,6,5,12,4,3,7,4,2,5,3,1,2,1];saveHeatCounts();renderHeatmap();
+});
+renderHeatmap();
 function processSelectedPlayer(now){
   const chosen=tracks.find(t=>t.id===selectedId&&t.missed===0);
   $("pose").textContent=chosen?"Yes":"No";
