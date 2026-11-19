@@ -68,13 +68,24 @@ footer{color:var(--muted);font-size:11px;text-align:center;padding:8px 16px 22px
   </section>
 
   <section class="panel">
+    <h2>Stage 4 · Court calibration</h2>
+    <p class="note">Mark the four visible outer court corners in this order: far-left, far-right, near-right, near-left. Keep the phone fixed and make sure the whole court is visible.</p>
+    <div class="toolbar"><button id="calibrateBtn">Calibrate court</button><button id="clearCourtBtn">Clear calibration</button><span id="calibrationStatus" class="note">Court not calibrated</span></div>
+    <div id="calibrationHelp" class="note" style="margin-top:9px">Tap Calibrate court, then tap the four corners on the camera image.</div>
+    <div class="metrics" style="margin-top:12px">
+      <div class="metric"><div class="label">Court mapping</div><div class="value" id="courtState">Off</div></div>
+      <div class="metric"><div class="label">Player's side</div><div class="value" id="courtSide">—</div></div>
+      <div class="metric"><div class="label">Court zone</div><div class="value" id="courtZone">—</div></div>
+      <div class="metric"><div class="label">Court position</div><div class="value" id="courtPosition">—</div></div>
+    </div>
+    <p class="note" style="margin-bottom:0">Manual perspective mapping with a simplified halfway net line. Not automatic line detection or a measured distance.</p>
+  </section>
+  <section class="panel">
     <h2>Selected-player session indicators</h2>
     <div class="metrics">
       <div class="metric"><div class="label">Session time</div><div class="value" id="time">00:00</div></div>
-      <div class="metric"><div class="label">Selected player</div><div class="value" id="selectedId">—</div></div>
-      <div class="metric"><div class="label">Pose visible</div><div class="value" id="pose">—</div></div>
+      <div class="metric"><div class="label">Selected player visible</div><div class="value" id="pose">—</div></div>
       <div class="metric"><div class="label">Movement index</div><div class="value" id="movement">0.0</div></div>
-      <div class="metric"><div class="label">Position samples</div><div class="value" id="samples">0</div></div>
       <div class="metric"><div class="label">AI processing</div><div class="value" id="fps">—</div></div>
     </div>
     <p class="note" style="margin-bottom:0">Movement index is a relative on-screen movement indicator based on changes in the selected player's hip position. It is not running speed, footwork quality or calibrated court distance.</p>
@@ -113,6 +124,7 @@ const video=$("video"), canvas=$("overlay"), ctx=canvas.getContext("2d");
 let stream=null, landmarker=null, running=false, sessionStart=0, timer=null, lastVideoTime=-1;
 let frameTimes=[], movementTotal=0, records=[], processing=false, rafId=null;
 let tracks=[], nextId=1, selectedId=null, selectedLastHip=null, selectedSamples=0;
+let calibrationMode=false, courtCorners=[], courtHomography=null, lastCourtPoint=null;
 const COLORS=["#63e6be","#ffcc66","#7db7ff","#ff8fa3"];
 const MAX_DISTANCE=.22, LOST_AFTER=12;
 
@@ -198,11 +210,43 @@ function selectPlayer(id){
     selectedId=id;selectedLastHip=null;
     $("movement").textContent="0.0";movementTotal=0;
   }
-  $("selectedId").textContent="P"+id;
+  $("selectedId")?.remove();
   renderPlayers();
 }
+function solveLinear(A,b){
+  const n=b.length,M=A.map((r,i)=>r.concat([b[i]]));
+  for(let c=0;c<n;c++){let p=c;for(let r=c+1;r<n;r++)if(Math.abs(M[r][c])>Math.abs(M[p][c]))p=r;
+    if(Math.abs(M[p][c])<1e-10)return null;[M[c],M[p]]=[M[p],M[c]];
+    const d=M[c][c];for(let j=c;j<=n;j++)M[c][j]/=d;
+    for(let r=0;r<n;r++)if(r!==c){const f=M[r][c];for(let j=c;j<=n;j++)M[r][j]-=f*M[c][j];}}
+  return M.map(r=>r[n]);
+}
+function buildHomography(src){
+  const dst=[[0,0],[1,0],[1,1],[0,1]],A=[],b=[];
+  for(let i=0;i<4;i++){const [x,y]=[src[i].x,src[i].y],[u,v]=dst[i];
+    A.push([x,y,1,0,0,0,-u*x,-u*y]);b.push(u);
+    A.push([0,0,0,x,y,1,-v*x,-v*y]);b.push(v);}
+  return solveLinear(A,b);
+}
+function mapToCourt(pt){
+  if(!courtHomography)return null;const [a,b,c,d,e,f,g,h]=courtHomography,den=g*pt.x+h*pt.y+1;
+  if(Math.abs(den)<1e-8)return null;return{x:(a*pt.x+b*pt.y+c)/den,y:(d*pt.x+e*pt.y+f)/den};
+}
+function courtZone(pt){
+  if(!pt||pt.x<0||pt.x>1||pt.y<0||pt.y>1)return "Outside";
+  const col=Math.min(2,Math.floor(pt.x*3)),row=Math.min(5,Math.floor(pt.y*6));
+  return ["Left","Centre","Right"][col]+" · "+["Back","Mid","Front","Front","Mid","Back"][row];
+}
+function drawCourt(){
+  if(courtCorners.length!==4)return;ctx.save();ctx.strokeStyle="#f8df7a";ctx.lineWidth=Math.max(3,canvas.width/500);
+  ctx.beginPath();courtCorners.forEach((p,i)=>i?ctx.lineTo(p.x*canvas.width,p.y*canvas.height):ctx.moveTo(p.x*canvas.width,p.y*canvas.height));ctx.closePath();ctx.stroke();
+  const l={x:(courtCorners[0].x+courtCorners[3].x)/2,y:(courtCorners[0].y+courtCorners[3].y)/2};
+  const r={x:(courtCorners[1].x+courtCorners[2].x)/2,y:(courtCorners[1].y+courtCorners[2].y)/2};
+  ctx.strokeStyle="#ff8fa3";ctx.setLineDash([10,7]);ctx.beginPath();ctx.moveTo(l.x*canvas.width,l.y*canvas.height);ctx.lineTo(r.x*canvas.width,r.y*canvas.height);ctx.stroke();ctx.setLineDash([]);
+  courtCorners.forEach((p,i)=>{ctx.fillStyle="#f8df7a";ctx.beginPath();ctx.arc(p.x*canvas.width,p.y*canvas.height,canvas.width/100,0,Math.PI*2);ctx.fill();ctx.fillStyle="#101820";ctx.font="bold 18px system-ui";ctx.fillText(String(i+1),p.x*canvas.width+8,p.y*canvas.height-8);});ctx.restore();
+}
 function drawAll(){
-  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.clearRect(0,0,canvas.width,canvas.height);drawCourt();
   const drawer=new DrawingUtils(ctx);
   for(const t of activeTracks()){
     const chosen=t.id===selectedId;
@@ -213,28 +257,31 @@ function drawAll(){
     ctx.fillText("Player "+t.id,t.hip.x*canvas.width+10,t.hip.y*canvas.height-10);
   }
 }
+function canvasPointFromEvent(e){
+  const rect=canvas.getBoundingClientRect(),scale=Math.min(rect.width/canvas.width,rect.height/canvas.height);
+  const w=canvas.width*scale,h=canvas.height*scale,ox=(rect.width-w)/2,oy=(rect.height-h)/2;
+  const x=(e.clientX-rect.left-ox)/w,y=(e.clientY-rect.top-oy)/h;
+  return x<0||x>1||y<0||y>1?null:{x,y};
+}
 canvas.addEventListener("click",e=>{
-  const rect=canvas.getBoundingClientRect();
-  // Correct for object-fit:contain letterboxing within the canvas element.
-  const scale=Math.min(rect.width/canvas.width,rect.height/canvas.height);
-  const shownW=canvas.width*scale,shownH=canvas.height*scale;
-  const offsetX=(rect.width-shownW)/2,offsetY=(rect.height-shownH)/2;
-  const x=(e.clientX-rect.left-offsetX)/shownW;
-  const y=(e.clientY-rect.top-offsetY)/shownH;
-  if(x<0||x>1||y<0||y>1)return;
-  let best=null,bestDistance=.16;
-  for(const t of activeTracks()){
-    const d=Math.hypot(t.hip.x-x,t.hip.y-y);
-    if(d<bestDistance){best=t;bestDistance=d;}
+  const point=canvasPointFromEvent(e);if(!point)return;
+  if(calibrationMode){
+    courtCorners.push(point);
+    const names=["far-left","far-right","near-right","near-left"];
+    $("calibrationHelp").textContent=courtCorners.length===4?"Check the yellow outline and pink halfway net line.":"Corner "+courtCorners.length+"/4 marked. Tap the "+names[courtCorners.length]+" corner next.";
+    if(courtCorners.length===4){courtHomography=buildHomography(courtCorners);calibrationMode=false;$("calibrateBtn").textContent="Recalibrate court";$("calibrationStatus").textContent=courtHomography?"4 corners marked":"Calibration failed";$("courtState").textContent=courtHomography?"Ready":"Error";$("calibrationHelp").textContent=courtHomography?"Court mapped. Keep the camera fixed; recalibrate if it moves.":"Could not map court. Clear and try again.";}
+    drawAll();return;
   }
+  let best=null,bestDistance=.16;for(const t of activeTracks()){const d=Math.hypot(t.hip.x-point.x,t.hip.y-point.y);if(d<bestDistance){best=t;bestDistance=d;}}
   if(best)selectPlayer(best.id);
 });
+$("calibrateBtn").addEventListener("click",()=>{courtCorners=[];courtHomography=null;calibrationMode=true;lastCourtPoint=null;$("courtState").textContent="Marking";$("courtSide").textContent="—";$("courtZone").textContent="—";$("courtPosition").textContent="—";$("calibrationStatus").textContent="Mark 4 corners";$("calibrationHelp").textContent="Tap far-left, far-right, near-right, then near-left outer court corner.";drawAll();});
+$("clearCourtBtn").addEventListener("click",()=>{calibrationMode=false;courtCorners=[];courtHomography=null;lastCourtPoint=null;$("courtState").textContent="Off";$("courtSide").textContent="—";$("courtZone").textContent="—";$("courtPosition").textContent="—";$("calibrationStatus").textContent="Court not calibrated";$("calibrationHelp").textContent="Court calibration cleared.";drawAll();});
 function processSelectedPlayer(now){
   const chosen=tracks.find(t=>t.id===selectedId&&t.missed===0);
   $("pose").textContent=chosen?"Yes":"No";
   if(!chosen)return;
   selectedSamples++;
-  $("samples").textContent=selectedSamples;
   const hip=chosen.hip;
   if(selectedLastHip){
     const d=Math.hypot(hip.x-selectedLastHip.x,hip.y-selectedLastHip.y);
@@ -242,6 +289,9 @@ function processSelectedPlayer(now){
   }
   selectedLastHip=hip;
   $("movement").textContent=(movementTotal*100).toFixed(1);
+  lastCourtPoint=mapToCourt(hip);
+  if(lastCourtPoint){$("courtSide").textContent=lastCourtPoint.y<.5?"Far side":"Near side";$("courtZone").textContent=courtZone(lastCourtPoint);$("courtPosition").textContent=(lastCourtPoint.x*100).toFixed(0)+"%, "+(lastCourtPoint.y*100).toFixed(0)+"%";}
+  else if(courtHomography){$("courtSide").textContent="Outside";$("courtZone").textContent="Outside";$("courtPosition").textContent="—";}
   records.push({
     elapsed:((performance.now()-sessionStart)/1000).toFixed(2),
     player_id:selectedId,hip_x:hip.x.toFixed(4),hip_y:hip.y.toFixed(4)
@@ -274,7 +324,7 @@ $("startBtn").addEventListener("click",()=>{
   if(!landmarker)return;
   running=true;sessionStart=performance.now();lastVideoTime=-1;tracks=[];nextId=1;
   movementTotal=0;selectedLastHip=null;selectedSamples=0;records=[];frameTimes=[];
-  $("time").textContent="00:00";$("selectedId").textContent=selectedId===null?"—":"P"+selectedId;$("pose").textContent="—";$("movement").textContent="0.0";$("samples").textContent="0";$("fps").textContent="—";
+  $("time").textContent="00:00";$("pose").textContent="—";$("movement").textContent="0.0";$("fps").textContent="—";
   $("startBtn").disabled=true;$("stopBtn").disabled=false;$("downloadBtn").disabled=true;
   status("Training live",true);
   $("observation").textContent="Collecting movement samples for the selected player. Select yourself from the video or player list.";
