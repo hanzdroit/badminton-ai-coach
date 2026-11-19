@@ -16,7 +16,8 @@ main{max-width:1100px;margin:auto;padding:14px;display:grid;gap:14px}
 button,select{background:#263b47;color:white;border:1px solid #45606e;border-radius:10px;padding:11px 14px;font-weight:650;font-size:14px}
 button.primary{background:#087f61;border-color:#087f61}button:disabled{opacity:.45}button:active{transform:scale(.98)}
 .stage{position:relative;background:#05090c;border-radius:12px;overflow:hidden;aspect-ratio:16/9;display:grid;place-items:center}
-video,canvas{position:absolute;width:100%;height:100%;object-fit:contain;inset:0}
+#video,#overlay{position:absolute;width:100%;height:100%;object-fit:contain;inset:0}
+#heatmap{position:static;display:block;width:100%;height:auto;max-height:none;inset:auto;object-fit:initial;touch-action:auto}
 canvas{touch-action:manipulation;cursor:pointer}.placeholder{color:var(--muted);text-align:center;padding:24px;max-width:400px;z-index:1;pointer-events:none}
 .status{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:12px}
 .dot{width:8px;height:8px;border-radius:50%;background:#75838b}.dot.on{background:var(--accent);box-shadow:0 0 10px var(--accent)}
@@ -84,7 +85,7 @@ footer{color:var(--muted);font-size:11px;text-align:center;padding:8px 16px 22px
     <h2>Stage 5 · Movement heatmap</h2>
     <p class="note">Once the court is calibrated, the selected player's mapped hip position adds samples to the court zones. Brighter zones mean more samples were recorded there.</p>
     <div style="background:#101b23;border:1px solid var(--line);border-radius:12px;padding:8px">
-      <canvas id="heatmap" width="600" height="360" style="display:block;width:100%;height:auto;max-height:360px"></canvas>
+      <canvas id="heatmap" width="600" height="520" aria-label="Badminton court movement heatmap"></canvas>
     </div>
     <div class="toolbar" style="margin-top:10px">
       <button id="demoHeatBtn">Preview with sample data</button>
@@ -148,19 +149,28 @@ function loadHeatCounts(){
 function saveHeatCounts(){try{localStorage.setItem(HEAT_KEY,JSON.stringify(heatCounts));}catch(e){}}
 function renderHeatmap(){
   const c=$("heatmap"),g=c.getContext("2d"),w=c.width,h=c.height;
-  g.clearRect(0,0,w,h);g.fillStyle="#14232d";g.fillRect(0,0,w,h);
-  const max=Math.max(1,...heatCounts),cw=w/3,ch=h/6;
+  g.clearRect(0,0,w,h);g.fillStyle="#101b23";g.fillRect(0,0,w,h);
+  const padX=74,padY=38,courtW=452,courtH=444,cw=courtW/3,ch=courtH/6;
+  g.fillStyle="#183c42";g.fillRect(padX,padY,courtW,courtH);
+  const max=Math.max(1,...heatCounts);
   for(let row=0;row<6;row++)for(let col=0;col<3;col++){
-    const n=heatCounts[row*3+col],intensity=n/max;
-    g.fillStyle=`rgba(255, ${Math.round(90+120*(1-intensity))}, 75, ${.10+intensity*.78})`;
-    g.fillRect(col*cw+3,row*ch+3,cw-6,ch-6);
-    g.strokeStyle="#d6e2e8";g.lineWidth=2;g.strokeRect(col*cw+3,row*ch+3,cw-6,ch-6);
-    g.fillStyle="#fff";g.font="bold 18px system-ui";g.textAlign="center";
-    g.fillText(["Left","Centre","Right"][col],col*cw+cw/2,row*ch+25);
-    g.font="16px system-ui";g.fillText(String(n)+" samples",col*cw+cw/2,row*ch+ch/2+6);
+    const n=heatCounts[row*3+col],intensity=n/max,alpha=n===0?.04:.16+intensity*.70;
+    g.fillStyle=`rgba(255, ${Math.round(105+90*(1-intensity))}, 65, ${alpha})`;
+    g.fillRect(padX+col*cw+2,padY+row*ch+2,cw-4,ch-4);
+    g.fillStyle="#f5f7f8";g.textAlign="center";g.textBaseline="middle";
+    g.font="bold 23px system-ui";g.fillText(String(n),padX+col*cw+cw/2,padY+row*ch+ch/2-8);
+    g.font="13px system-ui";g.fillStyle="#d5e2e5";g.fillText("samples",padX+col*cw+cw/2,padY+row*ch+ch/2+16);
   }
-  g.strokeStyle="#ff8fa3";g.lineWidth=5;g.beginPath();g.moveTo(0,h/2);g.lineTo(w,h/2);g.stroke();
-  g.fillStyle="#ffb3c0";g.font="bold 14px system-ui";g.textAlign="left";g.fillText("NET (approx.)",8,h/2-8);
+  g.strokeStyle="rgba(245,250,250,.9)";g.lineWidth=3;g.strokeRect(padX,padY,courtW,courtH);
+  g.lineWidth=2;
+  for(let col=1;col<3;col++){g.beginPath();g.moveTo(padX+col*cw,padY);g.lineTo(padX+col*cw,padY+courtH);g.stroke();}
+  for(let row=1;row<6;row++){g.beginPath();g.moveTo(padX,padY+row*ch);g.lineTo(padX+courtW,padY+row*ch);g.stroke();}
+  g.strokeStyle="#ff8fa3";g.lineWidth=7;g.beginPath();g.moveTo(padX,padY+courtH/2);g.lineTo(padX+courtW,padY+courtH/2);g.stroke();
+  g.fillStyle="#ffb3c0";g.font="bold 15px system-ui";g.textAlign="center";g.fillText("NET",padX+courtW/2,padY+courtH/2-13);
+  g.fillStyle="#d5e2e5";g.font="bold 16px system-ui";
+  ["LEFT","CENTRE","RIGHT"].forEach((name,col)=>g.fillText(name,padX+col*cw+cw/2,20));
+  g.save();g.translate(25,padY+courtH/2);g.rotate(-Math.PI/2);g.fillText("FAR BASELINE",0,0);g.restore();
+  g.save();g.translate(w-22,padY+courtH/2);g.rotate(Math.PI/2);g.fillText("NEAR BASELINE",0,0);g.restore();
   const total=heatCounts.reduce((a,b)=>a+b,0);$("heatSummary").textContent=total+" court-position samples";
 }
 function addHeatSample(pt){
