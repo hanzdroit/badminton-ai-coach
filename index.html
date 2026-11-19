@@ -17,8 +17,9 @@ button,select{background:#263b47;color:white;border:1px solid #45606e;border-rad
 button.primary{background:#087f61;border-color:#087f61}button:disabled{opacity:.45}button:active{transform:scale(.98)}
 .stage{position:relative;background:#05090c;border-radius:12px;overflow:hidden;aspect-ratio:16/9;display:grid;place-items:center}
 #video,#overlay{position:absolute;width:100%;height:100%;object-fit:contain;inset:0}
-#heatmap{position:static;display:block;width:100%;height:auto;max-height:none;inset:auto;object-fit:initial;touch-action:auto}
-canvas{touch-action:manipulation;cursor:pointer}.placeholder{color:var(--muted);text-align:center;padding:24px;max-width:400px;z-index:1;pointer-events:none}
+#heatmapFrame{isolation:isolate}
+#heatmap{position:relative !important;display:block !important;inset:auto !important;float:none !important;transform:none !important;width:100% !important;height:auto !important;max-height:none !important;object-fit:initial !important;touch-action:auto;cursor:default}
+#overlay{touch-action:manipulation;cursor:pointer}.placeholder{color:var(--muted);text-align:center;padding:24px;max-width:400px;z-index:1;pointer-events:none}
 .status{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:12px}
 .dot{width:8px;height:8px;border-radius:50%;background:#75838b}.dot.on{background:var(--accent);box-shadow:0 0 10px var(--accent)}
 .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
@@ -34,7 +35,7 @@ footer{color:var(--muted);font-size:11px;text-align:center;padding:8px 16px 22px
 </head>
 <body>
 <header>
-  <div><h1>🏸 Badminton AI Coach</h1><div class="sub">Integrated Prototype 03 · Multi-player selection + session tracking</div></div>
+  <div><h1>🏸 Badminton AI Coach</h1><div class="sub">Integrated Prototype 03 · Court Heatmap Layout Fix 2</div></div>
   <div class="status"><span id="liveDot" class="dot"></span><span id="statusText">Not connected</span></div>
 </header>
 <main>
@@ -84,8 +85,8 @@ footer{color:var(--muted);font-size:11px;text-align:center;padding:8px 16px 22px
   <section class="panel">
     <h2>Stage 5 · Movement heatmap</h2>
     <p class="note">Once the court is calibrated, the selected player's mapped hip position adds samples to the court zones. Brighter zones mean more samples were recorded there.</p>
-    <div style="background:#101b23;border:1px solid var(--line);border-radius:12px;padding:8px">
-      <canvas id="heatmap" width="600" height="520" aria-label="Badminton court movement heatmap"></canvas>
+    <div id="heatmapFrame" style="position:relative;display:block;clear:both;width:100%;max-width:620px;margin:12px auto;background:#101b23;border:1px solid var(--line);border-radius:12px;padding:8px;overflow:hidden">
+      <canvas id="heatmap" width="600" height="520" aria-label="Badminton court movement heatmap" style="position:relative !important;inset:auto !important;display:block !important;width:100% !important;height:auto !important;max-height:none !important;margin:0 auto"></canvas>
     </div>
     <div class="toolbar" style="margin-top:10px">
       <button id="demoHeatBtn">Preview with sample data</button>
