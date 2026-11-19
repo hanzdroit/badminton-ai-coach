@@ -113,6 +113,19 @@ footer{color:var(--muted);font-size:11px;text-align:center;padding:8px 16px 22px
   </section>
 
   <section class="panel">
+    <h2>Stage 7 · Recovery position analysis</h2>
+    <p class="note">This first version estimates how your position changes relative to a suggested base point near the centre of your half. It does not know when a shot has happened, so it measures movement back towards the base point as a proxy—not true post-shot recovery time.</p>
+    <div class="metrics">
+      <div class="metric"><div class="label">Distance to base</div><div class="value" id="recoveryDistance">—</div></div>
+      <div class="metric"><div class="label">Moving towards base</div><div class="value" id="recoveryTrend">—</div></div>
+      <div class="metric"><div class="label">Return movements</div><div class="value" id="recoveryReturns">0</div></div>
+      <div class="metric"><div class="label">Base proximity</div><div class="value" id="recoveryProximity">—</div></div>
+    </div>
+    <p id="recoveryInsight" class="note" style="margin:12px 0 0">Calibrate the court and select a player to begin measuring position relative to the suggested base point.</p>
+    <p class="note" style="margin-bottom:0">Base point is estimated at the horizontal centre and the middle of the player's half. Later, we can let you adjust it and detect shot events to measure actual recovery.</p>
+  </section>
+
+  <section class="panel">
     <h2>Selected-player session indicators</h2>
     <div class="metrics">
       <div class="metric"><div class="label">Session time</div><div class="value" id="time">00:00</div></div>
@@ -157,6 +170,7 @@ let stream=null, landmarker=null, running=false, sessionStart=0, timer=null, las
 let frameTimes=[], movementTotal=0, records=[], processing=false, rafId=null;
 let tracks=[], nextId=1, selectedId=null, selectedLastHip=null, selectedSamples=0;
 let calibrationMode=false, courtCorners=[], courtHomography=null, lastCourtPoint=null;
+let previousBaseDistance=null, recoveryReturns=0, recoveryTowards=0, recoveryAway=0;
 const HEAT_KEY="badmintonCoachHeatmapV1";
 let heatCounts=loadHeatCounts();
 function loadHeatCounts(){
@@ -389,6 +403,25 @@ $("demoHeatBtn").addEventListener("click",()=>{
   heatCounts=[4,8,3,7,15,6,5,12,4,3,7,4,2,5,3,1,2,1];saveHeatCounts();renderHeatmap();
 });
 renderHeatmap();
+function updateRecovery(point){
+  if(!point){$("recoveryDistance").textContent="—";$("recoveryTrend").textContent="—";$("recoveryProximity").textContent="—";return;}
+  const base={x:.5,y:point.y<.5?.25:.75};
+  const dist=Math.hypot(point.x-base.x,point.y-base.y);
+  $("recoveryDistance").textContent=(dist*100).toFixed(1)+"%";
+  $("recoveryProximity").textContent=Math.max(0,Math.round((1-dist/.5)*100))+"%";
+  if(previousBaseDistance!==null){
+    const delta=dist-previousBaseDistance;
+    if(delta<-.003){recoveryTowards++;recoveryReturns++;}
+    else if(delta>.003)recoveryAway++;
+    $("recoveryTrend").textContent=delta<-.003?"Towards base":delta>.003?"Away from base":"Stable";
+  }else $("recoveryTrend").textContent="Sampling";
+  $("recoveryReturns").textContent=String(recoveryReturns);
+  const total=recoveryTowards+recoveryAway;
+  $("recoveryInsight").textContent=total
+    ? `${recoveryTowards} position updates moved closer to the suggested base point and ${recoveryAway} moved farther away. This is a movement trend, not a count of completed post-shot recoveries.`
+    : "Collecting movement samples. The suggested base point is the centre of the selected player's half.";
+  previousBaseDistance=dist;
+}
 function processSelectedPlayer(now){
   const chosen=tracks.find(t=>t.id===selectedId&&t.missed===0);
   $("pose").textContent=chosen?"Yes":"No";
@@ -402,6 +435,7 @@ function processSelectedPlayer(now){
   selectedLastHip=hip;
   $("movement").textContent=(movementTotal*100).toFixed(1);
   lastCourtPoint=mapToCourt(hip);
+  updateRecovery(lastCourtPoint);
   if(lastCourtPoint){$("courtSide").textContent=lastCourtPoint.y<.5?"Far side":"Near side";$("courtZone").textContent=courtZone(lastCourtPoint);$("courtPosition").textContent=(lastCourtPoint.x*100).toFixed(0)+"%, "+(lastCourtPoint.y*100).toFixed(0)+"%";}
   else if(courtHomography){$("courtSide").textContent="Outside";$("courtZone").textContent="Outside";$("courtPosition").textContent="—";}
   records.push({
@@ -436,6 +470,9 @@ $("startBtn").addEventListener("click",()=>{
   if(!landmarker)return;
   running=true;sessionStart=performance.now();lastVideoTime=-1;tracks=[];nextId=1;
   movementTotal=0;selectedLastHip=null;selectedSamples=0;records=[];frameTimes=[];
+  previousBaseDistance=null;recoveryReturns=0;recoveryTowards=0;recoveryAway=0;
+  $("recoveryDistance").textContent="—";$("recoveryTrend").textContent="—";$("recoveryReturns").textContent="0";$("recoveryProximity").textContent="—";
+  $("recoveryInsight").textContent="Collecting movement samples relative to the suggested base point.";
   $("time").textContent="00:00";$("pose").textContent="—";$("movement").textContent="0.0";$("fps").textContent="—";
   $("startBtn").disabled=true;$("stopBtn").disabled=false;$("downloadBtn").disabled=true;
   status("Training live",true);
