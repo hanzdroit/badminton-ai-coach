@@ -4,29 +4,28 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#101820">
-<title>Badminton AI Coach — Live Prototype 02</title>
+<title>Badminton AI Coach — Integrated Prototype 03</title>
 <style>
 :root{color-scheme:dark;--bg:#101820;--panel:#182630;--muted:#9fb0bb;--accent:#63e6be;--line:#30434f}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f4f7f8;font:15px system-ui,-apple-system,Segoe UI,sans-serif}
 header{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:12px}
-h1{font-size:18px;margin:0} .sub{color:var(--muted);font-size:12px;margin-top:3px}
+h1{font-size:18px;margin:0}.sub{color:var(--muted);font-size:12px;margin-top:3px}
 main{max-width:1100px;margin:auto;padding:14px;display:grid;gap:14px}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px}
 .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 button,select{background:#263b47;color:white;border:1px solid #45606e;border-radius:10px;padding:11px 14px;font-weight:650;font-size:14px}
-button.primary{background:#087f61;border-color:#087f61}button:disabled{opacity:.45}
-button:active{transform:scale(.98)}
+button.primary{background:#087f61;border-color:#087f61}button:disabled{opacity:.45}button:active{transform:scale(.98)}
 .stage{position:relative;background:#05090c;border-radius:12px;overflow:hidden;aspect-ratio:16/9;display:grid;place-items:center}
 video,canvas{position:absolute;width:100%;height:100%;object-fit:contain;inset:0}
-canvas{pointer-events:none}.placeholder{color:var(--muted);text-align:center;padding:24px;max-width:400px}
+canvas{touch-action:manipulation;cursor:pointer}.placeholder{color:var(--muted);text-align:center;padding:24px;max-width:400px;z-index:1;pointer-events:none}
 .status{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:12px}
 .dot{width:8px;height:8px;border-radius:50%;background:#75838b}.dot.on{background:var(--accent);box-shadow:0 0 10px var(--accent)}
 .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
 .metric{background:#101b23;border:1px solid var(--line);padding:12px;border-radius:12px;min-width:0}
 .metric .label{font-size:11px;color:var(--muted)}.metric .value{font-size:23px;font-weight:750;margin-top:5px}
-.note{color:var(--muted);font-size:12px;line-height:1.5}
-h2{font-size:15px;margin:0 0 12px}
-progress{width:100%;height:8px;accent-color:var(--accent)}
+.note{color:var(--muted);font-size:12px;line-height:1.5}h2{font-size:15px;margin:0 0 12px}
+.players{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.player.selected{border:2px solid var(--accent);background:#12392f}
 ul{margin:8px 0 0;padding-left:18px;color:#d5e0e5;line-height:1.6}
 footer{color:var(--muted);font-size:11px;text-align:center;padding:8px 16px 22px}
 @media(max-width:620px){header{padding:13px}main{padding:10px}.metrics{grid-template-columns:repeat(2,1fr)}.metric .value{font-size:20px}.panel{padding:11px}}
@@ -34,7 +33,7 @@ footer{color:var(--muted);font-size:11px;text-align:center;padding:8px 16px 22px
 </head>
 <body>
 <header>
-  <div><h1>🏸 Badminton AI Coach</h1><div class="sub">Prototype 02 · Phone-only live pose tracking</div></div>
+  <div><h1>🏸 Badminton AI Coach</h1><div class="sub">Integrated Prototype 03 · Multi-player selection + session tracking</div></div>
   <div class="status"><span id="liveDot" class="dot"></span><span id="statusText">Not connected</span></div>
 </header>
 <main>
@@ -45,58 +44,66 @@ footer{color:var(--muted);font-size:11px;text-align:center;padding:8px 16px 22px
         <button id="startBtn" disabled>Start training</button>
         <button id="stopBtn" disabled>Stop</button>
       </div>
-      <select id="quality" aria-label="Processing quality">
-        <option value="640">Balanced processing</option>
-        <option value="480">Low processing</option>
-        <option value="960">Higher detail</option>
-      </select>
+      <div class="toolbar">
+        <select id="mode" aria-label="Game mode"><option value="singles">Singles · up to 2 players</option><option value="doubles" selected>Doubles · up to 4 players</option></select>
+        <select id="quality" aria-label="Processing quality"><option value="640">Balanced processing</option><option value="480">Low processing</option><option value="960">Higher detail</option></select>
+      </div>
     </div>
     <div class="stage" id="stage">
-      <div class="placeholder" id="placeholder">Allow camera access, then place your phone behind the baseline in landscape orientation. Keep the full court and your whole body visible.</div>
+      <div class="placeholder" id="placeholder">Allow camera access, then place your phone behind the baseline in landscape orientation. Keep the full court and players visible.</div>
       <video id="video" playsinline muted></video>
-      <canvas id="overlay"></canvas>
+      <canvas id="overlay" aria-label="Live pose tracking. Tap a player to select."></canvas>
     </div>
     <div class="toolbar" style="justify-content:space-between;margin-top:10px">
-      <span class="note">Camera: rear · Landscape recommended</span>
+      <span class="note">Camera: rear · Landscape recommended · Tap a skeleton to select yourself</span>
       <span class="note" id="fpsText">AI: waiting</span>
     </div>
   </section>
 
   <section class="panel">
-    <h2>Live session indicators</h2>
+    <h2>Detected players</h2>
+    <div class="note">Choose your player before or during the session. Player IDs are temporary and may change if players cross or overlap.</div>
+    <div id="players" class="players">No players detected yet.</div>
+    <p id="selection" class="note">No player selected. Tap your skeleton when it appears.</p>
+  </section>
+
+  <section class="panel">
+    <h2>Selected-player session indicators</h2>
     <div class="metrics">
       <div class="metric"><div class="label">Session time</div><div class="value" id="time">00:00</div></div>
-      <div class="metric"><div class="label">Pose detected</div><div class="value" id="pose">—</div></div>
-      <div class="metric"><div class="label">Movement index</div><div class="value" id="movement">0</div></div>
+      <div class="metric"><div class="label">Selected player</div><div class="value" id="selectedId">—</div></div>
+      <div class="metric"><div class="label">Pose visible</div><div class="value" id="pose">—</div></div>
+      <div class="metric"><div class="label">Movement index</div><div class="value" id="movement">0.0</div></div>
+      <div class="metric"><div class="label">Position samples</div><div class="value" id="samples">0</div></div>
       <div class="metric"><div class="label">AI processing</div><div class="value" id="fps">—</div></div>
     </div>
-    <p class="note" style="margin-bottom:0">Movement index is a relative on-screen movement indicator based on changes in your hip position. It is not running speed, footwork quality or a calibrated court distance.</p>
+    <p class="note" style="margin-bottom:0">Movement index is a relative on-screen movement indicator based on changes in the selected player's hip position. It is not running speed, footwork quality or calibrated court distance.</p>
   </section>
 
   <section class="panel">
     <h2>Session observations</h2>
-    <div id="observation" class="note">Start a session to collect basic pose and movement observations.</div>
-    <ul id="tips"><li>Keep the camera fixed and the full player visible.</li><li>For doubles, this prototype tracks the most prominent detected pose; it does not yet identify you among four players.</li></ul>
+    <div id="observation" class="note">Enable the camera, select yourself, then start a session to collect basic movement samples.</div>
+    <ul><li>Keep the camera fixed and all players fully visible.</li><li>For doubles, the model attempts to detect up to four people.</li><li>If players cross, overlap or leave the frame, temporary IDs can switch. Re-select yourself if needed.</li></ul>
   </section>
 
   <section class="panel">
     <div class="toolbar" style="justify-content:space-between">
-      <div><h2 style="margin-bottom:4px">Session data</h2><div class="note">Stored temporarily in this browser tab. Download a CSV summary when finished.</div></div>
+      <div><h2 style="margin-bottom:4px">Session data</h2><div class="note">Stored temporarily in this browser tab. Download selected-player movement samples as CSV.</div></div>
       <button id="downloadBtn" disabled>Download CSV</button>
     </div>
   </section>
 
   <section class="panel">
-    <h2>Setup notes</h2>
+    <h2>Setup notes & privacy</h2>
     <ul>
       <li>Use landscape orientation, rear camera and a stable tripod or safe elevated surface.</li>
-      <li>Keep the entire player visible. At a long distance, pose landmarks may be less accurate.</li>
-      <li>Good lighting helps. Avoid placing the camera where people frequently walk across the view.</li>
-      <li>Live processing runs on your phone. The pose model is downloaded once from Google's model hosting when first used; video frames are not uploaded to an AI server by this app.</li>
+      <li>Good lighting helps. At long distances, pose landmarks may be less accurate.</li>
+      <li>Video frames are processed locally in the browser and are not uploaded by this app. The AI runtime and pose model are downloaded from public hosting when needed.</li>
+      <li>This is an experimental prototype. It does not yet detect the shuttlecock, shots, court lines or smash speed.</li>
     </ul>
   </section>
 </main>
-<footer>Experimental prototype — not a certified sports measurement tool. No smash-speed measurement in this version.</footer>
+<footer>Experimental prototype — not a certified sports measurement tool.</footer>
 
 <script type="module">
 import { PoseLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
@@ -104,15 +111,21 @@ import { PoseLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdel
 const $ = id => document.getElementById(id);
 const video=$("video"), canvas=$("overlay"), ctx=canvas.getContext("2d");
 let stream=null, landmarker=null, running=false, sessionStart=0, timer=null, lastVideoTime=-1;
-let frameTimes=[], lastHip=null, movementTotal=0, sampleCount=0, poseCount=0, records=[];
-let processing=false, rafId=null;
+let frameTimes=[], movementTotal=0, records=[], processing=false, rafId=null;
+let tracks=[], nextId=1, selectedId=null, selectedLastHip=null, selectedSamples=0;
+const COLORS=["#63e6be","#ffcc66","#7db7ff","#ff8fa3"];
+const MAX_DISTANCE=.22, LOST_AFTER=12;
 
 function status(text,on=false){$("statusText").textContent=text;$("liveDot").classList.toggle("on",on)}
 function fmt(sec){return String(Math.floor(sec/60)).padStart(2,"0")+":"+String(Math.floor(sec%60)).padStart(2,"0")}
+function hipOf(lm){
+  const l=lm[23],r=lm[24];
+  if(!l||!r||(l.visibility??0)<.2||(r.visibility??0)<.2)return null;
+  return{x:(l.x+r.x)/2,y:(l.y+r.y)/2};
+}
 function resizeCanvas(){
-  const r=video.getBoundingClientRect();
-  const w=video.videoWidth||1280, h=video.videoHeight||720;
-  canvas.width=w;canvas.height=h;
+  if(!video.videoWidth)return;
+  canvas.width=video.videoWidth;canvas.height=video.videoHeight;
 }
 async function loadModel(){
   status("Loading on-device AI…");
@@ -122,52 +135,136 @@ async function loadModel(){
       modelAssetPath:"https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
       delegate:"GPU"
     },
-    runningMode:"VIDEO",numPoses:1,
+    runningMode:"VIDEO",numPoses:4,
     minPoseDetectionConfidence:.45,minPosePresenceConfidence:.45,minTrackingConfidence:.45
   });
   status("AI ready",true);$("startBtn").disabled=false;
 }
 $("cameraBtn").addEventListener("click",async()=>{
   try{
-    if(!navigator.mediaDevices?.getUserMedia) throw new Error("Camera access requires HTTPS and a supported browser.");
-    stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:"environment"},width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30,max:30}}});
-    video.srcObject=stream;await video.play();$("placeholder").style.display="none";
+    if(!navigator.mediaDevices?.getUserMedia)throw new Error("Camera access requires HTTPS and a supported browser.");
+    stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{
+      facingMode:{ideal:"environment"},width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30,max:30}
+    }});
+    video.srcObject=stream;await video.play();
     await new Promise(resolve=>{if(video.videoWidth)resolve();else video.onloadedmetadata=resolve;});
-    resizeCanvas();window.addEventListener("resize",resizeCanvas);
-    $("cameraBtn").disabled=true;status("Camera connected",true);
-    await loadModel();
-  }catch(e){status("Setup failed");$("observation").textContent=e.message+" Open this page over HTTPS (for example GitHub Pages) and allow camera permission.";}
+    $("placeholder").style.display="none";resizeCanvas();window.addEventListener("resize",resizeCanvas);
+    $("cameraBtn").disabled=true;status("Camera connected",true);await loadModel();
+  }catch(e){
+    status("Setup failed");$("observation").textContent=e.message+" Open this page over HTTPS and allow camera permission.";
+  }
 });
-function drawPose(result){
+
+// Match each newly detected pose to at most one existing temporary track.
+function updateTracks(detections){
+  for(const t of tracks)t.missed++;
+  const used=new Set();
+  for(const d of detections){
+    let best=null,bestDistance=MAX_DISTANCE;
+    for(const t of tracks){
+      if(used.has(t.id))continue;
+      const distance=Math.hypot(d.hip.x-t.hip.x,d.hip.y-t.hip.y);
+      if(distance<bestDistance){best=t;bestDistance=distance;}
+    }
+    if(best){
+      best.hip=d.hip;best.landmarks=d.landmarks;best.missed=0;used.add(best.id);d.track=best;
+    }else{
+      const t={id:nextId++,hip:d.hip,landmarks:d.landmarks,missed:0};
+      tracks.push(t);used.add(t.id);d.track=t;
+    }
+  }
+  tracks=tracks.filter(t=>t.missed<=LOST_AFTER);
+}
+function activeTracks(){return tracks.filter(t=>t.missed===0)}
+function renderPlayers(){
+  const active=activeTracks(),box=$("players");
+  box.innerHTML="";
+  if(!active.length){box.textContent="No players detected yet.";}
+  else{
+    for(const t of active){
+      const b=document.createElement("button");
+      b.className="player"+(t.id===selectedId?" selected":"");
+      b.textContent="Player "+t.id+(t.id===selectedId?" ✓":"");
+      b.addEventListener("click",()=>selectPlayer(t.id));
+      box.appendChild(b);
+    }
+  }
+  $("selection").textContent=selectedId===null
+    ?"No player selected. Tap your skeleton when it appears."
+    :"Following temporary ID: Player "+selectedId+". If identity looks wrong after players cross, select yourself again.";
+}
+function selectPlayer(id){
+  if(selectedId!==id){
+    selectedId=id;selectedLastHip=null;
+    $("movement").textContent="0.0";movementTotal=0;
+  }
+  $("selectedId").textContent="P"+id;
+  renderPlayers();
+}
+function drawAll(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  if(!result.landmarks?.length)return null;
-  const lm=result.landmarks[0];
   const drawer=new DrawingUtils(ctx);
-  drawer.drawConnectors(lm,PoseLandmarker.POSE_CONNECTIONS,{color:"#63e6be",lineWidth:3});
-  drawer.drawLandmarks(lm,{color:"#ffffff",fillColor:"#087f61",lineWidth:1,radius:4});
-  const l=lm[23],r=lm[24];
-  if(l&&r&&l.visibility>.25&&r.visibility>.25)return {x:(l.x+r.x)/2,y:(l.y+r.y)/2};
-  return null;
+  for(const t of activeTracks()){
+    const chosen=t.id===selectedId;
+    const color=chosen?"#63e6be":COLORS[(t.id-1)%COLORS.length];
+    drawer.drawConnectors(t.landmarks,PoseLandmarker.POSE_CONNECTIONS,{color,lineWidth:chosen?5:3});
+    drawer.drawLandmarks(t.landmarks,{color:"#fff",fillColor:color,lineWidth:1,radius:4});
+    ctx.fillStyle=color;ctx.font="bold 22px system-ui";
+    ctx.fillText("Player "+t.id,t.hip.x*canvas.width+10,t.hip.y*canvas.height-10);
+  }
+}
+canvas.addEventListener("click",e=>{
+  const rect=canvas.getBoundingClientRect();
+  // Correct for object-fit:contain letterboxing within the canvas element.
+  const scale=Math.min(rect.width/canvas.width,rect.height/canvas.height);
+  const shownW=canvas.width*scale,shownH=canvas.height*scale;
+  const offsetX=(rect.width-shownW)/2,offsetY=(rect.height-shownH)/2;
+  const x=(e.clientX-rect.left-offsetX)/shownW;
+  const y=(e.clientY-rect.top-offsetY)/shownH;
+  if(x<0||x>1||y<0||y>1)return;
+  let best=null,bestDistance=.16;
+  for(const t of activeTracks()){
+    const d=Math.hypot(t.hip.x-x,t.hip.y-y);
+    if(d<bestDistance){best=t;bestDistance=d;}
+  }
+  if(best)selectPlayer(best.id);
+});
+function processSelectedPlayer(now){
+  const chosen=tracks.find(t=>t.id===selectedId&&t.missed===0);
+  $("pose").textContent=chosen?"Yes":"No";
+  if(!chosen)return;
+  selectedSamples++;
+  $("samples").textContent=selectedSamples;
+  const hip=chosen.hip;
+  if(selectedLastHip){
+    const d=Math.hypot(hip.x-selectedLastHip.x,hip.y-selectedLastHip.y);
+    if(d<.12)movementTotal+=d;
+  }
+  selectedLastHip=hip;
+  $("movement").textContent=(movementTotal*100).toFixed(1);
+  records.push({
+    elapsed:((performance.now()-sessionStart)/1000).toFixed(2),
+    player_id:selectedId,hip_x:hip.x.toFixed(4),hip_y:hip.y.toFixed(4)
+  });
 }
 function processFrame(now){
   if(!running)return;
-  if(video.currentTime!==lastVideoTime && !processing){
+  if(video.currentTime!==lastVideoTime&&!processing){
     processing=true;lastVideoTime=video.currentTime;
     try{
-      const result=landmarker.detectForVideo(video,now);
-      const hip=drawPose(result);
-      if(hip){
-        poseCount++;$("pose").textContent="Yes";
-        if(lastHip){
-          const d=Math.hypot(hip.x-lastHip.x,hip.y-lastHip.y);
-          if(d<.12) movementTotal+=d;
-        }
-        lastHip=hip;sampleCount++;
-        records.push({elapsed:((performance.now()-sessionStart)/1000).toFixed(2),hip_x:hip.x.toFixed(4),hip_y:hip.y.toFixed(4)});
-        $("movement").textContent=(movementTotal*100).toFixed(1);
-      }else{$("pose").textContent="No";}
+      const result=landmarker.detectForVideo(video,now),detections=[];
+      for(const landmarks of result.landmarks||[]){
+        const hip=hipOf(landmarks);
+        if(hip)detections.push({hip,landmarks});
+      }
+      const maxPlayers=$("mode").value==="singles"?2:4;
+      updateTracks(detections.slice(0,maxPlayers));
+      drawAll();renderPlayers();processSelectedPlayer(now);
       frameTimes.push(now);if(frameTimes.length>20)frameTimes.shift();
-      if(frameTimes.length>1){const fps=1000*(frameTimes.length-1)/(frameTimes.at(-1)-frameTimes[0]);$("fps").textContent=fps.toFixed(1);$("fpsText").textContent="AI: "+fps.toFixed(1)+" FPS";}
+      if(frameTimes.length>1){
+        const fps=1000*(frameTimes.length-1)/(frameTimes.at(-1)-frameTimes[0]);
+        $("fps").textContent=fps.toFixed(1);$("fpsText").textContent="AI: "+fps.toFixed(1)+" FPS";
+      }
     }catch(e){console.warn(e);$("fpsText").textContent="AI frame error";}
     processing=false;
   }
@@ -175,9 +272,12 @@ function processFrame(now){
 }
 $("startBtn").addEventListener("click",()=>{
   if(!landmarker)return;
-  running=true;sessionStart=performance.now();lastHip=null;movementTotal=0;sampleCount=0;poseCount=0;records=[];
+  running=true;sessionStart=performance.now();lastVideoTime=-1;tracks=[];nextId=1;
+  movementTotal=0;selectedLastHip=null;selectedSamples=0;records=[];frameTimes=[];
+  $("time").textContent="00:00";$("selectedId").textContent=selectedId===null?"—":"P"+selectedId;$("pose").textContent="—";$("movement").textContent="0.0";$("samples").textContent="0";$("fps").textContent="—";
   $("startBtn").disabled=true;$("stopBtn").disabled=false;$("downloadBtn").disabled=true;
-  status("Training live",true);$("observation").textContent="Collecting movement samples. Keep your full body visible in the frame.";
+  status("Training live",true);
+  $("observation").textContent="Collecting movement samples for the selected player. Select yourself from the video or player list.";
   timer=setInterval(()=>$("time").textContent=fmt((performance.now()-sessionStart)/1000),250);
   rafId=requestAnimationFrame(processFrame);
 });
@@ -187,14 +287,15 @@ function stopSession(){
   $("downloadBtn").disabled=records.length===0;status("Session stopped");
   const secs=(performance.now()-sessionStart)/1000;
   $("time").textContent=fmt(secs);
-  $("observation").textContent=`Session: ${fmt(secs)}. Pose samples: ${poseCount}. Movement index: ${(movementTotal*100).toFixed(1)}. These are preliminary tracking indicators, not a validated badminton performance score.`;
+  $("observation").textContent=`Session: ${fmt(secs)}. Selected-player samples: ${selectedSamples}. Movement index: ${(movementTotal*100).toFixed(1)}. These are preliminary tracking indicators, not a validated badminton performance score.`;
 }
 $("stopBtn").addEventListener("click",stopSession);
 $("downloadBtn").addEventListener("click",()=>{
-  const header="elapsed_seconds,hip_x_normalized,hip_y_normalized\n";
-  const csv=header+records.map(r=>`${r.elapsed},${r.hip_x},${r.hip_y}`).join("\n");
+  const header="elapsed_seconds,temporary_player_id,hip_x_normalized,hip_y_normalized\n";
+  const csv=header+records.map(r=>`${r.elapsed},${r.player_id},${r.hip_x},${r.hip_y}`).join("\n");
   const url=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
-  const a=document.createElement("a");a.href=url;a.download="badminton_session_movement.csv";a.click();URL.revokeObjectURL(url);
+  const a=document.createElement("a");a.href=url;a.download="badminton_selected_player_session.csv";a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
 });
 window.addEventListener("beforeunload",()=>{if(stream)stream.getTracks().forEach(t=>t.stop());});
 </script>
