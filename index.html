@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#101820">
-<title>Badminton AI Coach — Integrated Prototype 03</title>
+<title>Badminton AI Coach — Stage 8 Setup Wizard</title>
 <style>
 :root{color-scheme:dark;--bg:#101820;--panel:#182630;--muted:#9fb0bb;--accent:#63e6be;--line:#30434f}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f4f7f8;font:15px system-ui,-apple-system,Segoe UI,sans-serif}
@@ -32,12 +32,121 @@ ul{margin:8px 0 0;padding-left:18px;color:#d5e0e5;line-height:1.6}
 footer{color:var(--muted);font-size:11px;text-align:center;padding:8px 16px 22px}
 @media(max-width:620px){header{padding:13px}main{padding:10px}.metrics{grid-template-columns:repeat(2,1fr)}.metric .value{font-size:20px}.panel{padding:11px}}
 </style>
+
+<style>
+/* Stage 8 setup wizard */
+#wizardBackdrop{position:fixed;inset:0;z-index:1000;background:rgba(3,9,13,.88);backdrop-filter:blur(7px);display:flex;align-items:center;justify-content:center;padding:14px}
+#wizardCard{width:min(760px,100%);max-height:min(92vh,900px);overflow:auto;background:#182630;border:1px solid #3b5360;border-radius:20px;padding:clamp(16px,3vw,26px);box-shadow:0 24px 80px #0009}
+.wizTop{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px}
+.wizEyebrow{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#63e6be;font-weight:800}
+.wizTitle{font-size:24px;font-weight:800;margin:5px 0}
+.wizSub{color:#a9bac4;font-size:13px;line-height:1.5}
+.wizProgress{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin:18px 0}
+.wizProgress span{height:5px;border-radius:10px;background:#30434f}
+.wizProgress span.done{background:#63e6be}
+.wizStep{display:none}.wizStep.active{display:block}
+.wizOptions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:16px 0}
+.wizChoice{border:1px solid #405965;background:#101b23;border-radius:14px;padding:14px;text-align:left;cursor:pointer;min-height:92px}
+.wizChoice.selected{border-color:#63e6be;box-shadow:inset 0 0 0 1px #63e6be;background:#15352f}
+.wizChoice strong{display:block;margin-bottom:5px}.wizChoice small{color:#a9bac4;line-height:1.4}
+.wizCallout{padding:12px;border-radius:12px;background:#101b23;border:1px solid #30434f;color:#c6d3d9;font-size:13px;line-height:1.5;margin:12px 0}
+.wizCourt{position:relative;max-width:430px;margin:14px auto;padding:12px;background:#0e4d3e;border-radius:14px;border:2px solid #b9d6cb}
+.wizCourtInner{height:220px;border:2px solid #f1f7f3;position:relative;background:linear-gradient(90deg,transparent 49.5%,#f1f7f3 49.5%,#f1f7f3 50.5%,transparent 50.5%)}
+.wizCourtInner:before{content:"";position:absolute;left:0;right:0;top:50%;border-top:2px solid #f1f7f3}
+.wizCourtInner:after{content:"";position:absolute;left:10%;right:10%;top:0;bottom:0;border-left:1px solid #dcebe4;border-right:1px solid #dcebe4}
+.wizCorner{position:absolute;width:27px;height:27px;border-radius:50%;border:2px solid #fff;background:#263b47;color:white;font-weight:800;cursor:pointer;z-index:2}
+.wizCorner.marked{background:#63e6be;color:#08251d;border-color:#fff}
+.wizCorner:nth-child(1){left:-13px;top:-13px}.wizCorner:nth-child(2){right:-13px;top:-13px}.wizCorner:nth-child(3){right:-13px;bottom:-13px}.wizCorner:nth-child(4){left:-13px;bottom:-13px}
+.wizPlayerRow{display:flex;gap:9px;flex-wrap:wrap;margin:12px 0}
+.wizPlayer{border:1px solid #405965;background:#101b23;border-radius:12px;padding:12px 16px;cursor:pointer}
+.wizPlayer.selected{border-color:#63e6be;background:#15352f}
+.wizChecks{display:grid;gap:9px;margin:14px 0}
+.wizCheck{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:#101b23;color:#c6d3d9;font-size:13px}
+.wizCheck b{margin-left:auto;color:#63e6be}
+.wizFooter{display:flex;justify-content:space-between;gap:10px;margin-top:20px}
+.wizFooter button{min-width:110px}
+#wizModeNote{font-size:12px;color:#a9bac4}
+@media(max-width:520px){.wizOptions{grid-template-columns:1fr}.wizTitle{font-size:21px}.wizCourtInner{height:180px}}
+</style>
+
 </head>
 <body>
 <header>
-  <div><h1>🏸 Badminton AI Coach</h1><div class="sub">Integrated Prototype 03 · Court Heatmap Layout Fix 2</div></div>
+  <div><h1>🏸 Badminton AI Coach</h1><div class="sub">Stage 8 · Pre-Recording Setup Wizard</div></div>
   <div class="status"><span id="liveDot" class="dot"></span><span id="statusText">Not connected</span></div>
 </header>
+
+<div id="wizardBackdrop" role="dialog" aria-modal="true" aria-labelledby="wizHeading">
+  <div id="wizardCard">
+    <div class="wizTop">
+      <div><div class="wizEyebrow">Badminton AI Coach · Stage 8</div><div class="wizTitle" id="wizHeading">Let's get your session ready</div><div class="wizSub">A few quick steps before recording. You can change your setup later.</div></div>
+      <span style="font-size:30px">🏸</span>
+    </div>
+    <div class="wizProgress" id="wizProgress"><span class="done"></span><span></span><span></span><span></span><span></span></div>
+    <div class="wizStep active" data-step="0">
+      <h2>Step 1 · Choose your session</h2>
+      <p class="wizSub">First, tell the coach what kind of session you are preparing for.</p>
+      <div class="wizOptions">
+        <button class="wizChoice selected" data-mode="singles"><strong>Singles</strong><small>One player on each side · up to 2 players</small></button>
+        <button class="wizChoice" data-mode="doubles"><strong>Doubles</strong><small>Two players on each side · up to 4 players</small></button>
+      </div>
+      <div class="wizOptions">
+        <button class="wizChoice selected" data-session="practice"><strong>Practice</strong><small>Training drills and personal practice</small></button>
+        <button class="wizChoice" data-session="match"><strong>Match</strong><small>Record a singles or doubles match</small></button>
+      </div>
+      <div class="wizCallout">You can change these choices before starting a session.</div>
+    </div>
+    <div class="wizStep" data-step="1">
+      <h2>Step 2 · Choose your setup mode</h2>
+      <p class="wizSub">For now, you can explore the setup from home. Live Court Mode is for the actual badminton court.</p>
+      <div class="wizOptions">
+        <button class="wizChoice selected" data-setup="demo"><strong>🧪 Demo Mode</strong><small>Test the steps using simulated court and player data. No court needed.</small></button>
+        <button class="wizChoice" data-setup="live"><strong>📹 Live Court Mode</strong><small>Use your phone camera and real court when you are ready.</small></button>
+      </div>
+      <div class="wizCallout" id="wizModeNote">Demo Mode is selected. Simulated results will be labelled clearly and will not be saved as real performance data.</div>
+    </div>
+    <div class="wizStep" data-step="2">
+      <h2>Step 3 · Camera and court positioning</h2>
+      <p class="wizSub" id="wizCameraText">In Demo Mode, we will use a sample court layout to practise the calibration interaction.</p>
+      <div class="wizCallout" id="wizCameraAdvice">For a real session: use landscape orientation, the rear camera, a stable mount behind the baseline, and keep the entire court visible.</div>
+      <div id="wizDemoCourt">
+        <div class="wizCourt"><div class="wizCourtInner" id="wizCourtInner">
+          <button class="wizCorner" data-corner="0" aria-label="Far-left corner">1</button>
+          <button class="wizCorner" data-corner="1" aria-label="Far-right corner">2</button>
+          <button class="wizCorner" data-corner="2" aria-label="Near-right corner">3</button>
+          <button class="wizCorner" data-corner="3" aria-label="Near-left corner">4</button>
+        </div></div>
+        <p class="wizSub" id="wizCornerStatus" style="text-align:center">Tap the four numbered corners in order to practise calibration.</p>
+      </div>
+      <div id="wizLiveCamera" style="display:none">
+        <button id="wizEnableCamera" class="primary">Enable phone camera</button>
+        <p class="wizSub">Camera access requires HTTPS and browser permission. You can also complete this step later.</p>
+      </div>
+    </div>
+    <div class="wizStep" data-step="3">
+      <h2>Step 4 · Identify yourself</h2>
+      <p class="wizSub" id="wizPlayerText">Choose a demo player to see how player selection works. This is a simulation, not actual AI detection.</p>
+      <div class="wizPlayerRow" id="wizPlayers">
+        <button class="wizPlayer selected" data-player="1">Player 1</button>
+        <button class="wizPlayer" data-player="2">Player 2</button>
+        <button class="wizPlayer" data-player="3">Player 3</button>
+        <button class="wizPlayer" data-player="4">Player 4</button>
+      </div>
+      <div class="wizCallout" id="wizPlayerAdvice">In Live Court Mode, the app will need to detect players first. You will then select your own player from the detected-player list.</div>
+    </div>
+    <div class="wizStep" data-step="4">
+      <h2>Step 5 · Readiness check</h2>
+      <p class="wizSub">Review the setup before entering the coaching screen.</p>
+      <div class="wizChecks" id="wizChecks"></div>
+      <div class="wizCallout" id="wizFinalNote">Demo checks are simulated for interface testing only. They do not verify real camera, court or AI performance.</div>
+    </div>
+    <div class="wizFooter">
+      <button id="wizBack" disabled>Back</button>
+      <button id="wizNext" class="primary">Next</button>
+    </div>
+  </div>
+</div>
+
 <main>
   <section class="panel">
     <div class="toolbar" style="justify-content:space-between;margin-bottom:12px">
@@ -497,6 +606,64 @@ $("downloadBtn").addEventListener("click",()=>{
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 });
 window.addEventListener("beforeunload",()=>{if(stream)stream.getTracks().forEach(t=>t.stop());});
+
+// Stage 8: guided pre-recording setup (Demo Mode is explicitly simulated)
+const wiz = {step:0, mode:"singles", session:"practice", setup:"demo", player:"1", corners:[]};
+const wizSteps=[...document.querySelectorAll(".wizStep")];
+function wizRender(){
+  wizSteps.forEach((el,i)=>el.classList.toggle("active",i===wiz.step));
+  [...document.querySelectorAll("#wizProgress span")].forEach((el,i)=>el.classList.toggle("done",i<=wiz.step));
+  $("wizBack").disabled=wiz.step===0;
+  $("wizNext").textContent=wiz.step===4?"Enter coaching screen":"Next";
+  $("mode").value=wiz.mode;
+  $("wizDemoCourt").style.display=wiz.setup==="demo"?"block":"none";
+  $("wizLiveCamera").style.display=wiz.setup==="live"?"block":"none";
+  $("wizCameraText").textContent=wiz.setup==="demo"?"In Demo Mode, use the sample court below to practise the calibration interaction.":"Position your phone behind the baseline in landscape orientation. Enable the camera to check the live preview.";
+  $("wizModeNote").textContent=wiz.setup==="demo"?"Demo Mode is selected. Simulated results will be labelled clearly and will not be saved as real performance data.":"Live Court Mode is selected. Real camera access and court calibration will be used when available.";
+  $("wizPlayerText").textContent=wiz.setup==="demo"?"Choose a demo player to see how player selection works. This is a simulation, not actual AI detection.":"When players appear in the live camera feed, select your own player from the detected-player list after entering the coaching screen.";
+  $("wizPlayerAdvice").textContent=wiz.setup==="demo"?"Selected demo player: Player "+wiz.player+". This selection only demonstrates the setup flow.":"Live player selection will happen from the real detected-player controls after the wizard. Temporary IDs may change when players cross or overlap.";
+  if(wiz.step===4){
+    const checks=wiz.setup==="demo"?[
+      ["Session type",wiz.mode+" · "+wiz.session,"ok"],
+      ["Setup mode","Demo simulation","ok"],
+      ["Court calibration","Demo corner exercise "+(wiz.corners.length===4?"completed":"not completed"),wiz.corners.length===4?"ok":"pending"],
+      ["Player selection","Demo Player "+wiz.player,"ok"],
+      ["Real AI verification","Not performed in Demo Mode","pending"]
+    ]:[
+      ["Session type",wiz.mode+" · "+wiz.session,"ok"],
+      ["Camera","Camera permission / preview must be checked","pending"],
+      ["Court calibration","Complete on the live camera after entering","pending"],
+      ["Player selection","Select from live detections after entering","pending"],
+      ["AI system check","Will be checked with real camera input","pending"]
+    ];
+    $("wizChecks").innerHTML=checks.map(c=>`<div class="wizCheck"><span>${c[0]}</span><span style="margin-left:auto">${c[1]}</span><b>${c[2]==="ok"?"READY":"LATER"}</b></div>`).join("");
+    $("wizFinalNote").textContent=wiz.setup==="demo"?"Demo Mode lets us test navigation and interactions now. It does not start recording or create real player-performance data.":"Live mode opens the coaching screen. Complete camera, calibration and player selection there before starting a real session.";
+  }
+}
+document.querySelectorAll("[data-mode]").forEach(b=>b.addEventListener("click",()=>{wiz.mode=b.dataset.mode;document.querySelectorAll("[data-mode]").forEach(x=>x.classList.toggle("selected",x===b));}));
+document.querySelectorAll("[data-session]").forEach(b=>b.addEventListener("click",()=>{wiz.session=b.dataset.session;document.querySelectorAll("[data-session]").forEach(x=>x.classList.toggle("selected",x===b));}));
+document.querySelectorAll("[data-setup]").forEach(b=>b.addEventListener("click",()=>{wiz.setup=b.dataset.setup;document.querySelectorAll("[data-setup]").forEach(x=>x.classList.toggle("selected",x===b));wizRender();}));
+document.querySelectorAll(".wizCorner").forEach(b=>b.addEventListener("click",()=>{
+  const n=Number(b.dataset.corner);
+  if(n!==wiz.corners.length){$("wizCornerStatus").textContent="Please tap corner "+(wiz.corners.length+1)+" next.";return;}
+  wiz.corners.push(n);b.classList.add("marked");$("wizCornerStatus").textContent=wiz.corners.length===4?"Demo calibration exercise completed!":"Corner "+wiz.corners.length+" of 4 marked.";
+}));
+document.querySelectorAll(".wizPlayer").forEach(b=>b.addEventListener("click",()=>{wiz.player=b.dataset.player;document.querySelectorAll(".wizPlayer").forEach(x=>x.classList.toggle("selected",x===b));wizRender();}));
+$("wizEnableCamera").addEventListener("click",()=>{$("cameraBtn").click();});
+$("wizBack").addEventListener("click",()=>{if(wiz.step>0){wiz.step--;wizRender();}});
+$("wizNext").addEventListener("click",()=>{
+  if(wiz.step<4){wiz.step++;wizRender();return;}
+  $("wizardBackdrop").style.display="none";
+  document.body.dataset.setupMode=wiz.setup;
+  const tag=document.createElement("span");tag.id="setupModeBadge";tag.className="note";
+  tag.textContent=wiz.setup==="demo"?" · DEMO MODE — simulated setup":" · LIVE COURT MODE";
+  const head=document.querySelector("header .sub");if(head&&!$("setupModeBadge"))head.appendChild(tag);
+  $("mode").value=wiz.mode;
+  if(wiz.setup==="demo")$("observation").textContent="Demo Mode selected. The setup wizard used simulated court/player interactions only. No real recording or performance analysis has been created.";
+  else $("observation").textContent="Live Court Mode selected. Enable the camera, calibrate the court and select yourself before starting a real session.";
+});
+wizRender();
+
 </script>
 </body>
 </html>
