@@ -97,6 +97,22 @@ footer{color:var(--muted);font-size:11px;text-align:center;padding:8px 16px 22px
   </section>
 
   <section class="panel">
+    <h2>Stage 6 · Court coverage analysis</h2>
+    <p class="note">This analysis uses the 18 heatmap zones. It describes where the selected player has been recorded, not whether their movement or positioning was tactically correct.</p>
+    <div class="metrics">
+      <div class="metric"><div class="label">Zones visited</div><div class="value" id="coverageVisited">0 / 18</div></div>
+      <div class="metric"><div class="label">Court coverage</div><div class="value" id="coveragePercent">0%</div></div>
+      <div class="metric"><div class="label">Most visited zone</div><div class="value" id="coverageMost" style="font-size:16px">—</div></div>
+      <div class="metric"><div class="label">Least visited zone</div><div class="value" id="coverageLeast" style="font-size:16px">—</div></div>
+    </div>
+    <h3 style="font-size:13px;margin:16px 0 8px">Movement distribution by court depth</h3>
+    <div id="depthBars" style="display:grid;gap:10px">
+      <div class="note">No court-position samples yet.</div>
+    </div>
+    <p id="coverageInsight" class="note" style="margin:12px 0 0">Collect court-position samples to see coverage insights.</p>
+  </section>
+
+  <section class="panel">
     <h2>Selected-player session indicators</h2>
     <div class="metrics">
       <div class="metric"><div class="label">Session time</div><div class="value" id="time">00:00</div></div>
@@ -148,6 +164,41 @@ function loadHeatCounts(){
   return Array(18).fill(0);
 }
 function saveHeatCounts(){try{localStorage.setItem(HEAT_KEY,JSON.stringify(heatCounts));}catch(e){}}
+function renderCoverage(){
+  const total=heatCounts.reduce((a,b)=>a+b,0);
+  const visited=heatCounts.filter(n=>n>0).length;
+  $("coverageVisited").textContent=visited+" / 18";
+  $("coveragePercent").textContent=Math.round(visited/18*100)+"%";
+  const labels=[];
+  for(let row=0;row<6;row++)for(let col=0;col<3;col++)
+    labels.push(["Left","Centre","Right"][col]+" · "+["Back","Mid","Front","Front","Mid","Back"][row]);
+  if(total===0){
+    $("coverageMost").textContent="—";$("coverageLeast").textContent="—";
+    $("depthBars").innerHTML='<div class="note">No court-position samples yet.</div>';
+    $("coverageInsight").textContent="Collect court-position samples to see coverage insights.";
+    return;
+  }
+  const max=Math.max(...heatCounts),minPositive=Math.min(...heatCounts.filter(n=>n>0));
+  const most=heatCounts.indexOf(max);
+  const least=heatCounts.indexOf(minPositive);
+  $("coverageMost").textContent=labels[most];
+  $("coverageLeast").textContent=labels[least];
+  const bands=[
+    {name:"Backcourt",indices:[0,1,2,15,16,17]},
+    {name:"Midcourt",indices:[3,4,5,12,13,14]},
+    {name:"Frontcourt",indices:[6,7,8,9,10,11]}
+  ];
+  const totals=bands.map(b=>({name:b.name,count:b.indices.reduce((sum,i)=>sum+heatCounts[i],0)}));
+  $("depthBars").innerHTML=totals.map(b=>{
+    const pct=total?Math.round(b.count/total*100):0;
+    return `<div><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><strong>${b.name}</strong><span>${b.count} samples · ${pct}%</span></div><div style="height:12px;background:#0d171e;border-radius:99px;overflow:hidden;border:1px solid var(--line)"><div style="height:100%;width:${pct}%;background:#63e6be;border-radius:99px"></div></div></div>`;
+  }).join("");
+  const empty=labels.filter((label,i)=>heatCounts[i]===0);
+  let insight=`${visited} of 18 zones have recorded activity. `;
+  if(empty.length)insight+=`No samples yet in ${empty.slice(0,4).join(", ")}${empty.length>4?" and "+(empty.length-4)+" other zone(s)":""}.`;
+  else insight+="All 18 zones have at least one recorded sample.";
+  $("coverageInsight").textContent=insight;
+}
 function renderHeatmap(){
   const c=$("heatmap"),g=c.getContext("2d"),w=c.width,h=c.height;
   g.clearRect(0,0,w,h);g.fillStyle="#101b23";g.fillRect(0,0,w,h);
@@ -173,6 +224,7 @@ function renderHeatmap(){
   g.save();g.translate(25,padY+courtH/2);g.rotate(-Math.PI/2);g.fillText("FAR BASELINE",0,0);g.restore();
   g.save();g.translate(w-22,padY+courtH/2);g.rotate(Math.PI/2);g.fillText("NEAR BASELINE",0,0);g.restore();
   const total=heatCounts.reduce((a,b)=>a+b,0);$("heatSummary").textContent=total+" court-position samples";
+  renderCoverage();
 }
 function addHeatSample(pt){
   if(!pt||pt.x<0||pt.x>1||pt.y<0||pt.y>1)return;
