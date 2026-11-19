@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#101820">
+<title>Badminton AI Coach — Live Prototype 02</title>
+<style>
+:root{color-scheme:dark;--bg:#101820;--panel:#182630;--muted:#9fb0bb;--accent:#63e6be;--line:#30434f}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f4f7f8;font:15px system-ui,-apple-system,Segoe UI,sans-serif}
+header{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:12px}
+h1{font-size:18px;margin:0} .sub{color:var(--muted);font-size:12px;margin-top:3px}
+main{max-width:1100px;margin:auto;padding:14px;display:grid;gap:14px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+button,select{background:#263b47;color:white;border:1px solid #45606e;border-radius:10px;padding:11px 14px;font-weight:650;font-size:14px}
+button.primary{background:#087f61;border-color:#087f61}button:disabled{opacity:.45}
+button:active{transform:scale(.98)}
+.stage{position:relative;background:#05090c;border-radius:12px;overflow:hidden;aspect-ratio:16/9;display:grid;place-items:center}
+video,canvas{position:absolute;width:100%;height:100%;object-fit:contain;inset:0}
+canvas{pointer-events:none}.placeholder{color:var(--muted);text-align:center;padding:24px;max-width:400px}
+.status{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:12px}
+.dot{width:8px;height:8px;border-radius:50%;background:#75838b}.dot.on{background:var(--accent);box-shadow:0 0 10px var(--accent)}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
+.metric{background:#101b23;border:1px solid var(--line);padding:12px;border-radius:12px;min-width:0}
+.metric .label{font-size:11px;color:var(--muted)}.metric .value{font-size:23px;font-weight:750;margin-top:5px}
+.note{color:var(--muted);font-size:12px;line-height:1.5}
+h2{font-size:15px;margin:0 0 12px}
+progress{width:100%;height:8px;accent-color:var(--accent)}
+ul{margin:8px 0 0;padding-left:18px;color:#d5e0e5;line-height:1.6}
+footer{color:var(--muted);font-size:11px;text-align:center;padding:8px 16px 22px}
+@media(max-width:620px){header{padding:13px}main{padding:10px}.metrics{grid-template-columns:repeat(2,1fr)}.metric .value{font-size:20px}.panel{padding:11px}}
+</style>
+</head>
+<body>
+<header>
+  <div><h1>🏸 Badminton AI Coach</h1><div class="sub">Prototype 02 · Phone-only live pose tracking</div></div>
+  <div class="status"><span id="liveDot" class="dot"></span><span id="statusText">Not connected</span></div>
+</header>
+<main>
+  <section class="panel">
+    <div class="toolbar" style="justify-content:space-between;margin-bottom:12px">
+      <div class="toolbar">
+        <button id="cameraBtn" class="primary">Enable camera</button>
+        <button id="startBtn" disabled>Start training</button>
+        <button id="stopBtn" disabled>Stop</button>
+      </div>
+      <select id="quality" aria-label="Processing quality">
+        <option value="640">Balanced processing</option>
+        <option value="480">Low processing</option>
+        <option value="960">Higher detail</option>
+      </select>
+    </div>
+    <div class="stage" id="stage">
+      <div class="placeholder" id="placeholder">Allow camera access, then place your phone behind the baseline in landscape orientation. Keep the full court and your whole body visible.</div>
+      <video id="video" playsinline muted></video>
+      <canvas id="overlay"></canvas>
+    </div>
+    <div class="toolbar" style="justify-content:space-between;margin-top:10px">
+      <span class="note">Camera: rear · Landscape recommended</span>
+      <span class="note" id="fpsText">AI: waiting</span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Live session indicators</h2>
+    <div class="metrics">
+      <div class="metric"><div class="label">Session time</div><div class="value" id="time">00:00</div></div>
+      <div class="metric"><div class="label">Pose detected</div><div class="value" id="pose">—</div></div>
+      <div class="metric"><div class="label">Movement index</div><div class="value" id="movement">0</div></div>
+      <div class="metric"><div class="label">AI processing</div><div class="value" id="fps">—</div></div>
+    </div>
+    <p class="note" style="margin-bottom:0">Movement index is a relative on-screen movement indicator based on changes in your hip position. It is not running speed, footwork quality or a calibrated court distance.</p>
+  </section>
+
+  <section class="panel">
+    <h2>Session observations</h2>
+    <div id="observation" class="note">Start a session to collect basic pose and movement observations.</div>
+    <ul id="tips"><li>Keep the camera fixed and the full player visible.</li><li>For doubles, this prototype tracks the most prominent detected pose; it does not yet identify you among four players.</li></ul>
+  </section>
+
+  <section class="panel">
+    <div class="toolbar" style="justify-content:space-between">
+      <div><h2 style="margin-bottom:4px">Session data</h2><div class="note">Stored temporarily in this browser tab. Download a CSV summary when finished.</div></div>
+      <button id="downloadBtn" disabled>Download CSV</button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Setup notes</h2>
+    <ul>
+      <li>Use landscape orientation, rear camera and a stable tripod or safe elevated surface.</li>
+      <li>Keep the entire player visible. At a long distance, pose landmarks may be less accurate.</li>
+      <li>Good lighting helps. Avoid placing the camera where people frequently walk across the view.</li>
+      <li>Live processing runs on your phone. The pose model is downloaded once from Google's model hosting when first used; video frames are not uploaded to an AI server by this app.</li>
+    </ul>
+  </section>
+</main>
+<footer>Experimental prototype — not a certified sports measurement tool. No smash-speed measurement in this version.</footer>
+
+<script type="module">
+import { PoseLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+
+const $ = id => document.getElementById(id);
+const video=$("video"), canvas=$("overlay"), ctx=canvas.getContext("2d");
+let stream=null, landmarker=null, running=false, sessionStart=0, timer=null, lastVideoTime=-1;
+let frameTimes=[], lastHip=null, movementTotal=0, sampleCount=0, poseCount=0, records=[];
+let processing=false, rafId=null;
+
+function status(text,on=false){$("statusText").textContent=text;$("liveDot").classList.toggle("on",on)}
+function fmt(sec){return String(Math.floor(sec/60)).padStart(2,"0")+":"+String(Math.floor(sec%60)).padStart(2,"0")}
+function resizeCanvas(){
+  const r=video.getBoundingClientRect();
+  const w=video.videoWidth||1280, h=video.videoHeight||720;
+  canvas.width=w;canvas.height=h;
+}
+async function loadModel(){
+  status("Loading on-device AI…");
+  const vision=await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+  landmarker=await PoseLandmarker.createFromOptions(vision,{
+    baseOptions:{
+      modelAssetPath:"https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+      delegate:"GPU"
+    },
+    runningMode:"VIDEO",numPoses:1,
+    minPoseDetectionConfidence:.45,minPosePresenceConfidence:.45,minTrackingConfidence:.45
+  });
+  status("AI ready",true);$("startBtn").disabled=false;
+}
+$("cameraBtn").addEventListener("click",async()=>{
+  try{
+    if(!navigator.mediaDevices?.getUserMedia) throw new Error("Camera access requires HTTPS and a supported browser.");
+    stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:"environment"},width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30,max:30}}});
+    video.srcObject=stream;await video.play();$("placeholder").style.display="none";
+    await new Promise(resolve=>{if(video.videoWidth)resolve();else video.onloadedmetadata=resolve;});
+    resizeCanvas();window.addEventListener("resize",resizeCanvas);
+    $("cameraBtn").disabled=true;status("Camera connected",true);
+    await loadModel();
+  }catch(e){status("Setup failed");$("observation").textContent=e.message+" Open this page over HTTPS (for example GitHub Pages) and allow camera permission.";}
+});
+function drawPose(result){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  if(!result.landmarks?.length)return null;
+  const lm=result.landmarks[0];
+  const drawer=new DrawingUtils(ctx);
+  drawer.drawConnectors(lm,PoseLandmarker.POSE_CONNECTIONS,{color:"#63e6be",lineWidth:3});
+  drawer.drawLandmarks(lm,{color:"#ffffff",fillColor:"#087f61",lineWidth:1,radius:4});
+  const l=lm[23],r=lm[24];
+  if(l&&r&&l.visibility>.25&&r.visibility>.25)return {x:(l.x+r.x)/2,y:(l.y+r.y)/2};
+  return null;
+}
+function processFrame(now){
+  if(!running)return;
+  if(video.currentTime!==lastVideoTime && !processing){
+    processing=true;lastVideoTime=video.currentTime;
+    try{
+      const result=landmarker.detectForVideo(video,now);
+      const hip=drawPose(result);
+      if(hip){
+        poseCount++;$("pose").textContent="Yes";
+        if(lastHip){
+          const d=Math.hypot(hip.x-lastHip.x,hip.y-lastHip.y);
+          if(d<.12) movementTotal+=d;
+        }
+        lastHip=hip;sampleCount++;
+        records.push({elapsed:((performance.now()-sessionStart)/1000).toFixed(2),hip_x:hip.x.toFixed(4),hip_y:hip.y.toFixed(4)});
+        $("movement").textContent=(movementTotal*100).toFixed(1);
+      }else{$("pose").textContent="No";}
+      frameTimes.push(now);if(frameTimes.length>20)frameTimes.shift();
+      if(frameTimes.length>1){const fps=1000*(frameTimes.length-1)/(frameTimes.at(-1)-frameTimes[0]);$("fps").textContent=fps.toFixed(1);$("fpsText").textContent="AI: "+fps.toFixed(1)+" FPS";}
+    }catch(e){console.warn(e);$("fpsText").textContent="AI frame error";}
+    processing=false;
+  }
+  rafId=requestAnimationFrame(processFrame);
+}
+$("startBtn").addEventListener("click",()=>{
+  if(!landmarker)return;
+  running=true;sessionStart=performance.now();lastHip=null;movementTotal=0;sampleCount=0;poseCount=0;records=[];
+  $("startBtn").disabled=true;$("stopBtn").disabled=false;$("downloadBtn").disabled=true;
+  status("Training live",true);$("observation").textContent="Collecting movement samples. Keep your full body visible in the frame.";
+  timer=setInterval(()=>$("time").textContent=fmt((performance.now()-sessionStart)/1000),250);
+  rafId=requestAnimationFrame(processFrame);
+});
+function stopSession(){
+  running=false;cancelAnimationFrame(rafId);clearInterval(timer);
+  $("startBtn").disabled=!landmarker;$("stopBtn").disabled=true;
+  $("downloadBtn").disabled=records.length===0;status("Session stopped");
+  const secs=(performance.now()-sessionStart)/1000;
+  $("time").textContent=fmt(secs);
+  $("observation").textContent=`Session: ${fmt(secs)}. Pose samples: ${poseCount}. Movement index: ${(movementTotal*100).toFixed(1)}. These are preliminary tracking indicators, not a validated badminton performance score.`;
+}
+$("stopBtn").addEventListener("click",stopSession);
+$("downloadBtn").addEventListener("click",()=>{
+  const header="elapsed_seconds,hip_x_normalized,hip_y_normalized\n";
+  const csv=header+records.map(r=>`${r.elapsed},${r.hip_x},${r.hip_y}`).join("\n");
+  const url=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+  const a=document.createElement("a");a.href=url;a.download="badminton_session_movement.csv";a.click();URL.revokeObjectURL(url);
+});
+window.addEventListener("beforeunload",()=>{if(stream)stream.getTracks().forEach(t=>t.stop());});
+</script>
+</body>
+</html>
