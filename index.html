@@ -307,7 +307,7 @@ footer{color:var(--muted);font-size:11px;text-align:center;padding:8px 16px 22px
       <div class="metric"><div class="label">Shot events</div><div class="value" id="simShots">—</div></div>
       <div class="metric"><div class="label">Tracked players</div><div class="value" id="simPlayers">4</div></div>
     </div>
-    <canvas id="matchCourtCanvas" class="stage910Canvas" width="620" height="360" aria-label="Animated simulated doubles match court"></canvas>
+    <canvas id="matchCourtCanvas" class="stage910Canvas" width="620" height="560" aria-label="Animated simulated doubles match court"></canvas>
     <div class="stage910Controls">
       <button id="generateFullMatch" class="primary">Generate full 20-minute match</button>
       <button id="playMatchPreview">Play accelerated preview</button>
@@ -821,16 +821,28 @@ function formatMatchTime(sec){const m=Math.floor(sec/60),s=Math.floor(sec%60);re
 function drawMatchCourt(event){
   const c=matchCanvas,ctx=matchCtx,w=c.width,h=c.height;
   ctx.clearRect(0,0,w,h);ctx.fillStyle="#0e4d3e";ctx.fillRect(0,0,w,h);
-  ctx.strokeStyle="#f1f7f3";ctx.lineWidth=2;ctx.strokeRect(35,24,w-70,h-48);
-  ctx.beginPath();ctx.moveTo(35,h/2);ctx.lineTo(w-35,h/2);ctx.stroke();
-  ctx.lineWidth=1;ctx.strokeRect(85,24,w-170,h-48);
-  ctx.beginPath();ctx.moveTo(85,h/2);ctx.lineTo(w-85,h/2);ctx.stroke();
-  ctx.beginPath();ctx.moveTo(35,h/2-7);ctx.lineTo(w-35,h/2-7);ctx.moveTo(35,h/2+7);ctx.lineTo(w-35,h/2+7);ctx.stroke();
-  ctx.fillStyle="#d7e8df";ctx.font="12px system-ui";ctx.fillText("OPPONENTS",45,17);ctx.fillText("YOUR TEAM",45,h-7);
-  const players=event?event.players:[[210,278],[405,278],[210,82],[405,82]];
+  // Badminton court is a long, narrow rectangle. Draw it vertically in top-down view.
+  const left=175,right=445,top=24,bottom=536,mid=(top+bottom)/2;
+  const width=right-left;
+  ctx.strokeStyle="#f1f7f3";ctx.lineWidth=2;ctx.strokeRect(left,top,width,bottom-top);
+  // Doubles sidelines and service lines.
+  ctx.lineWidth=1.5;
+  ctx.beginPath();
+  ctx.moveTo(left+20,top);ctx.lineTo(left+20,bottom);
+  ctx.moveTo(right-20,top);ctx.lineTo(right-20,bottom);
+  ctx.moveTo(left,top+68);ctx.lineTo(right,top+68);
+  ctx.moveTo(left,bottom-68);ctx.lineTo(right,bottom-68);
+  ctx.moveTo(left,mid-8);ctx.lineTo(right,mid-8);
+  ctx.moveTo(left,mid+8);ctx.lineTo(right,mid+8);
+  ctx.stroke();
+  // Net line.
+  ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(left,mid);ctx.lineTo(right,mid);ctx.stroke();
+  ctx.fillStyle="#d7e8df";ctx.font="12px system-ui";ctx.textAlign="center";
+  ctx.fillText("OPPONENTS",w/2,16);ctx.fillText("YOUR TEAM",w/2,h-8);ctx.textAlign="left";
+  const players=event?event.players:[[235,450],[385,450],[235,110],[385,110]];
   const colors=["#ffd166","#63e6be","#8ab4f8","#f78fb3"];
   players.forEach((p,i)=>{
-    ctx.beginPath();ctx.fillStyle=colors[i];ctx.arc(p[0],p[1],11,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.fillStyle=colors[i];ctx.arc(p[0],p[1],12,0,Math.PI*2);ctx.fill();
     ctx.fillStyle="#102027";ctx.font="bold 11px system-ui";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("P"+(i+1),p[0],p[1]);
     ctx.textAlign="left";ctx.textBaseline="alphabetic";
   });
@@ -853,16 +865,20 @@ function buildSimulatedMatch(){
     const rallyStart=t,duration=7+rand()*17,count=perRally[r];
     for(let j=0;j<count;j++){
       const player=(j%4), side=player<2?1:-1;
-      const px=player%2===0?190+rand()*90:340+rand()*90;
-      const py=side===1?245+rand()*55:60+rand()*55;
-      const sx=75+rand()*470,sy=55+rand()*250;
+      // Players 1–2 stay on the user's half; Players 3–4 stay on the opponents' half.
+      const teamY=player<2?1:-1;
+      const px=player%2===0?220+rand()*55:345+rand()*55;
+      const py=teamY===1?390+rand()*95:75+rand()*95;
+      const sx=195+rand()*230,sy=45+rand()*470;
       const shot=simShotNames[Math.floor(rand()*simShotNames.length)];
       const positions=[
-        [px,py],
-        [player===0?190+rand()*80:340+rand()*80,side===1?245+rand()*55:60+rand()*55],
-        [190+rand()*220,side===1?255+rand()*45:60+rand()*45],
-        [340+rand()*90,side===1?250+rand()*50:60+rand()*50]
+        [210+rand()*65,390+rand()*95],
+        [345+rand()*65,390+rand()*95],
+        [210+rand()*65,75+rand()*95],
+        [345+rand()*65,75+rand()*95]
       ];
+      // Let the player taking this shot move a little towards the shuttle, without crossing the net.
+      positions[player]=[Math.max(195,Math.min(425,px+(sx-px)*.18)),Math.max(teamY===1?270:35,Math.min(teamY===1?525:250,py+(sy-py)*.12))];
       events.push({time:t+(j/count)*duration,rally:r+1,shot,player:player+1,shuttle:[sx,sy],from:[px,py],players:positions});
       shotIndex++;
     }
