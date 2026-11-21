@@ -86,13 +86,68 @@ footer{color:var(--muted);font-size:11px;text-align:center;padding:8px 16px 22px
 @media(max-width:560px){.stage910Controls select{flex:1;min-width:140px}.stage910Event{flex-direction:column}}
 </style>
 
+
+<style>
+/* Stage 16.5 silent court monitor */
+#courtMonitor{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;border:1px solid #405965;background:#13232c;border-radius:14px;padding:12px}
+#courtMonitor .cm-title{font-weight:800;font-size:14px}#courtMonitor .cm-sub{color:#a9bbc5;font-size:12px;margin-top:3px}
+#courtMonitor .cm-count{font-size:22px;font-weight:850;color:#63e6be;text-align:right;white-space:nowrap}
+#courtMonitor .cm-players{grid-column:1/-1;display:flex;gap:7px;flex-wrap:wrap}
+#courtMonitor .cm-player{border:1px solid #526975;background:#1c303b;border-radius:9px;padding:8px 12px;font-weight:750;font-size:13px}
+#courtMonitor .cm-player.active{border-color:#63e6be;background:#124638;color:#fff}
+#courtMonitor .cm-player.missing{opacity:.45;border-style:dashed}
+#courtMonitor .cm-tip{grid-column:1/-1;color:#a9bbc5;font-size:11px}
+@media(max-width:520px){#courtMonitor{grid-template-columns:1fr}#courtMonitor .cm-count{text-align:left}}
+/* Stage 16.5: clean game-style live workflow */
+#wizardBackdrop{display:none!important}
+body{background:#0b141b}
+header{position:sticky;top:0;z-index:30;background:#101b23eF;backdrop-filter:blur(12px)}
+#quickStart{max-width:1100px;margin:14px auto 10px;padding:0 14px}
+#quickStart .qs-card{background:linear-gradient(135deg,#182b35,#12232c);border:1px solid #34505d;border-radius:18px;padding:16px}
+.qs-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.qs-title{font-size:20px;font-weight:850}.qs-muted{color:#a9bac4;font-size:12px;line-height:1.5}
+.qs-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+#liveWorkspace{max-width:1100px;margin:0 auto;padding:0 14px 18px;display:grid;gap:12px}
+#liveWorkspace .panel{margin:0}
+#liveWorkspace #stage{aspect-ratio:16/9;min-height:260px;position:relative;overflow:hidden}
+#selfieMonitor{position:absolute;right:12px;top:12px;width:clamp(104px,18%,190px);aspect-ratio:4/3;z-index:8;border:2px solid #63e6be;border-radius:12px;overflow:hidden;background:#071016;box-shadow:0 5px 20px #0009;display:none}
+#selfieMonitor video{width:100%;height:100%;object-fit:cover;display:block;transform:scaleX(-1)}
+#selfieMonitor .selfieTag{position:absolute;left:5px;right:5px;bottom:5px;padding:4px 6px;border-radius:6px;background:#071016d9;color:#fff;font-size:10px;font-weight:750;display:flex;justify-content:space-between;gap:4px}
+#selfieMonitor .selfieClose{position:absolute;right:5px;top:5px;width:24px;height:24px;padding:0;border-radius:50%;background:#071016d9;color:#fff;border:1px solid #ffffff66;z-index:2}
+#selfieStatus{font-size:10px;color:#b9d6ca}
+#liveWorkspace #players{display:flex;gap:10px;flex-wrap:wrap}
+#liveWorkspace .player{min-width:72px;padding:12px 16px;font-size:14px}
+#liveWorkspace #cameraBtn,#liveWorkspace #startBtn,#liveWorkspace #stopBtn{display:none!important}
+#liveWorkspace .player.selected{background:#124638;border:2px solid #63e6be}
+#liveWorkspace #selection{font-size:13px}
+#liveWorkspace #recordBar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+#recordStart{background:#087f61;border-color:#087f61;font-size:16px;padding:14px 22px}
+#recordStart.recording{background:#9d3030;border-color:#c44b4b}
+#advancedArea{max-width:1100px;margin:0 auto 24px;padding:0 14px}
+#advancedArea[hidden]{display:none!important}
+#advancedArea main{padding:0;max-width:none}
+#advancedArea #coachHome{display:none}
+#advancedToggle{width:100%;text-align:left}
+.qs-field{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.qs-field select{min-width:180px}
+@media(max-width:650px){#quickStart,#liveWorkspace,#advancedArea{padding-left:10px;padding-right:10px}#liveWorkspace #stage{min-height:220px;aspect-ratio:4/3}.qs-title{font-size:18px}}
+</style>
+
 </head>
 <body>
 <header>
-  <div><h1>🏸 Badminton AI Coach</h1><div class="sub">Stages 8–15.5 · Integrated coaching prototype</div></div>
+  <div><h1>🏸 Badminton AI Coach</h1><div class="sub">Stage 16.5 · Simplified live match experience</div></div>
   <div class="status"><span id="liveDot" class="dot"></span><span id="statusText">Not connected</span></div>
 </header>
-
+<div id="quickStart">
+ <div class="qs-card">
+  <div class="qs-head"><div><div class="qs-title">Ready for your game?</div><div class="qs-muted">Choose your format, identify the players, then start recording.</div></div><span class="stage910Pill">STAGE 16.5 · LIVE MODE</span></div>
+  <div class="qs-field"><label for="quickGameMode">Game format</label><select id="quickGameMode"><option value="singles">Singles · up to 2 players</option><option value="doubles" selected>Doubles · up to 4 players</option></select><label for="quickQuality">Processing</label><select id="quickQuality"><option value="640">Balanced</option><option value="480">Low</option><option value="960">Higher detail</option></select></div>
+  <div class="qs-actions"><button id="quickCamera" class="primary">1 · Enable camera & detect players</button><button id="quickCalibrate">Calibrate court</button><button id="showAdvancedTop">Advanced / Demo tools</button></div>
+  <div class="qs-muted" id="quickHint" style="margin-top:10px">Position your phone behind the baseline in landscape orientation. Keep all players and the full court visible.</div>
+ </div>
+</div>
+<div id="liveWorkspace"></div>
 <div id="wizardBackdrop" role="dialog" aria-modal="true" aria-labelledby="wizHeading">
   <div id="wizardCard">
     <div class="wizTop">
@@ -164,7 +219,7 @@ footer{color:var(--muted);font-size:11px;text-align:center;padding:8px 16px 22px
   </div>
 </div>
 
-<main>
+<div id="advancedArea" hidden><button id="advancedToggle" type="button">Advanced / Demo tools · Show or hide</button><main id="advancedMain">
   <section class="panel" id="coachHome">
     <div class="toolbar" style="justify-content:space-between">
       <div><h2>Stage 15 · Badminton AI Coach</h2><p class="note">Your session hub for camera setup, court mapping and movement analysis. Shuttle and rally labs are synthetic demonstrations.</p></div>
@@ -203,9 +258,10 @@ footer{color:var(--muted);font-size:11px;text-align:center;padding:8px 16px 22px
       <div class="placeholder" id="placeholder">Allow camera access, then place your phone behind the baseline in landscape orientation. Keep the full court and players visible.</div>
       <video id="video" playsinline muted></video>
       <canvas id="overlay" aria-label="Live pose tracking. Tap a player to select."></canvas>
+      <div id="selfieMonitor" aria-label="Front camera self preview"><button type="button" class="selfieClose" id="closeSelfie" title="Hide selfie preview">×</button><video id="selfieVideo" playsinline muted></video><div class="selfieTag"><span>SELF VIEW</span><span id="selfieStatus">Starting…</span></div></div>
     </div>
     <div class="toolbar" style="justify-content:space-between;margin-top:10px">
-      <span class="note">Camera: rear · Landscape recommended · Tap a skeleton to select yourself</span>
+      <span class="note">P labels are temporary IDs · Tap your skeleton to select yourself</span>
       <span class="note" id="fpsText">AI: waiting</span>
     </div>
   </section>
@@ -468,7 +524,7 @@ footer{color:var(--muted);font-size:11px;text-align:center;padding:8px 16px 22px
       <li>Stage 9 uses synthetic shuttle trajectories. No YOLO or shuttle-specific real detector is integrated. Stage 10 shot labels are a rule-based demonstration, not real shot classification.</li>
     </ul>
   </section>
-</main>
+</main></div>
 <footer>Experimental prototype — not a certified sports measurement tool.</footer>
 
 <script type="module">
@@ -649,7 +705,7 @@ function renderPlayers(){
     for(const t of active){
       const b=document.createElement("button");
       b.className="player"+(t.id===selectedId?" selected":"");
-      b.textContent="Player "+t.id+(t.id===selectedId?" ✓":"");
+      b.textContent="P"+t.id+(t.id===selectedId?" · YOU ✓":"");
       b.addEventListener("click",()=>selectPlayer(t.id));
       box.appendChild(b);
     }
@@ -709,7 +765,7 @@ function drawAll(){
     drawer.drawConnectors(t.landmarks,PoseLandmarker.POSE_CONNECTIONS,{color,lineWidth:chosen?5:3});
     drawer.drawLandmarks(t.landmarks,{color:"#fff",fillColor:color,lineWidth:1,radius:4});
     ctx.fillStyle=color;ctx.font="bold 22px system-ui";
-    ctx.fillText("Player "+t.id,t.hip.x*canvas.width+10,t.hip.y*canvas.height-10);
+    ctx.fillText("P"+t.id+(t.id===selectedId?" · YOU":""),t.hip.x*canvas.width+10,t.hip.y*canvas.height-10);
   }
 }
 function canvasPointFromEvent(e){
@@ -1272,6 +1328,87 @@ $("runTracknetBtn").addEventListener("click",async()=>{
   finally{tn.busy=false;$("runTracknetBtn").disabled=!tn.session||!tnVideoReady();}
 });
 $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFrames").textContent="0";$("tracknetPoints").textContent="0";$("tracknetRuntime").textContent="—";tnDraw();tnStatus("Cleared detector results. Model remains loaded.");});
+
+
+// Stage 16.5: reorganise existing camera/player controls into a focused live workflow.
+(function initStage165(){
+ const $=id=>document.getElementById(id);
+ const live=$('liveWorkspace'), advanced=$('advancedArea');
+ // Optional front-camera picture-in-picture. Rear camera remains the sole source for court/player detection.
+ let selfieStream=null, selfieAttempted=false, selfieDismissed=false;
+ async function startSelfiePreview(){
+   if(selfieStream||selfieAttempted||selfieDismissed)return; selfieAttempted=true;
+   const wrap=$('selfieMonitor'),sv=$('selfieVideo'),label=$('selfieStatus');
+   try{
+     const devices=await navigator.mediaDevices.enumerateDevices();
+     const front=devices.find(d=>d.kind==='videoinput' && /front|user|facetime/i.test(d.label));
+     const constraints={audio:false,video:front?.deviceId?{deviceId:{exact:front.deviceId},width:{ideal:640},height:{ideal:480}}:{facingMode:{ideal:'user'},width:{ideal:640},height:{ideal:480}}};
+     selfieStream=await navigator.mediaDevices.getUserMedia(constraints);
+     sv.srcObject=selfieStream; await sv.play(); wrap.style.display='block'; label.textContent='Preview active';
+   }catch(err){
+     selfieStream=null; wrap.style.display='block'; label.textContent='Unavailable';
+     wrap.title='This phone/browser may not support using front and rear cameras simultaneously. Rear-camera player detection is still active.';
+   }
+ }
+ function stopSelfiePreview(){if(selfieStream){selfieStream.getTracks().forEach(t=>t.stop());selfieStream=null;} $('selfieVideo').srcObject=null;$('selfieMonitor').style.display='none';}
+ $('closeSelfie').addEventListener('click',()=>{selfieDismissed=true;stopSelfiePreview();});
+ const cameraPanel=$('stage')?.closest('.panel');
+ const monitor=document.createElement('section');monitor.id='courtMonitor';monitor.innerHTML='<div><div class="cm-title">COURT DETECTION MONITOR</div><div class="cm-sub" id="cmStatus">Waiting for rear camera…</div></div><div class="cm-count" id="cmCount">0 / 4</div><div class="cm-players" id="cmPlayers"><span class="cm-player missing">P1 · Waiting</span><span class="cm-player missing">P2 · Waiting</span><span class="cm-player missing">P3 · Waiting</span><span class="cm-player missing">P4 · Waiting</span></div><div class="cm-tip">Silent visual feedback · Tap a detected player marker or player button below to select yourself.</div>';
+ live.appendChild(monitor);
+ const playersPanel=$('players')?.closest('.panel');
+ const calibration=$('courtCalibrationPanel');
+ if(cameraPanel)live.appendChild(cameraPanel);
+ if(playersPanel)live.appendChild(playersPanel);
+ if(calibration){
+   const details=document.createElement('details');details.className='panel';
+   details.innerHTML='<summary style="cursor:pointer;font-weight:750">Court calibration (recommended for court-position analysis)</summary><div id="calibrationSlot" style="margin-top:12px"></div>';
+   details.querySelector('#calibrationSlot').appendChild(calibration);live.appendChild(details);
+ }
+ const record=document.createElement('section');record.className='panel';record.innerHTML='<div id="recordBar"><div><strong style="font-size:17px">Match recording</strong><div class="note" id="recordState">Camera and player selection required before recording.</div></div><div class="toolbar"><span class="metric"><span class="label">TIME</span><span class="value" id="quickTimer">00:00</span></span><button id="recordStart" class="primary" disabled>● START RECORDING</button><button id="recordStop" disabled>STOP</button></div></div><div class="note" style="margin-top:10px">Player IDs are temporary tracking IDs. If players cross or overlap, check the selected player again.</div>';
+ live.appendChild(record);
+ // Put the live camera and detected players before recording controls.
+ const quickMode=$('quickGameMode'),oldMode=$('mode'),quality=$('quality');
+ quickMode.addEventListener('change',()=>{oldMode.value=quickMode.value;oldMode.dispatchEvent(new Event('change',{bubbles:true}));});
+ $('quickQuality').addEventListener('change',e=>quality.value=e.target.value);
+ $('quickCamera').addEventListener('click',()=>{$('cameraBtn').click();$('quickHint').textContent='Camera requested. Allow access. Watch the silent Court Detection Monitor for player status; no sound is required.';});
+ $('quickCalibrate').addEventListener('click',()=>{$('calibrateBtn').click();$('calibrationSlot').scrollIntoView({behavior:'smooth',block:'center'});});
+ $('recordStart').addEventListener('click',()=>{$('startBtn').click();sync();});
+ $('recordStop').addEventListener('click',()=>{$('stopBtn').click();sync();});
+ $('showAdvancedTop').addEventListener('click',()=>{advanced.hidden=!advanced.hidden;if(!advanced.hidden)advanced.scrollIntoView({behavior:'smooth'});});
+ $('advancedToggle').addEventListener('click',()=>{advanced.hidden=!advanced.hidden;});
+ const obs=new MutationObserver(sync);obs.observe($('players'),{childList:true,subtree:true,characterData:true});
+ const originalRender=window.renderCoachHome; // status is also polled below.
+ function sync(){
+   const hasCamera=!!(document.getElementById('liveDot')?.classList.contains('on'));
+   const selected=!!document.getElementById('selection')?.textContent.includes('Following temporary ID');
+   const running=document.getElementById('stopBtn')?.disabled===false;
+   const detected=$('players')?.querySelectorAll('button.player').length||0;
+   const maxPlayers=quickMode.value==='singles'?2:4;
+   $('cmCount').textContent=detected+' / '+maxPlayers;
+   $('cmStatus').textContent=!hasCamera?'Waiting for rear camera…':(detected===0?'Camera active · Looking for players…':detected+' player'+(detected===1?'':'s')+' detected · Select yourself below');
+   const cm=$('cmPlayers');cm.innerHTML='';
+   for(let i=1;i<=maxPlayers;i++){
+     const actual=[...($('players')?.querySelectorAll('button.player')||[])].find(b=>b.textContent.trim().startsWith('P'+i+' ' )||b.textContent.trim()==='P'+i);
+     const chip=document.createElement('span');chip.className='cm-player '+(actual?'active':'missing');
+     chip.textContent=actual?(actual.textContent.includes('YOU')?'P'+i+' · YOU ✓':'P'+i+' · DETECTED'):'P'+i+' · WAITING';
+     if(actual)chip.addEventListener('click',()=>actual.click());
+     cm.appendChild(chip);
+   }
+   if(hasCamera&&detected>0&&!selfieAttempted&&!selfieDismissed)startSelfiePreview();
+   if($('selfieMonitor').style.display==='block')$('selfieStatus').textContent=selected?'YOU SELECTED':'P'+detected+' DETECTED';
+   $('recordStart').disabled=!hasCamera||!selected||running;
+   $('recordStop').disabled=!running;
+   $('recordStart').classList.toggle('recording',running);
+   $('recordStart').textContent=running?'● RECORDING':'● START RECORDING';
+   $('recordState').textContent=running?'Recording live movement data.':(!hasCamera?'Enable camera to begin.':(!selected?'Tap your player in the camera view or select a player below.':'Player selected. Ready to record.'));
+   $('quickTimer').textContent=$('time')?.textContent||'00:00';
+   if(hasCamera)$('quickHint').textContent='Camera is active. Tap your player in the video or choose the matching player ID below.';
+ }
+ setInterval(sync,500);
+ // Hide the long stage-by-stage dashboard unless the user deliberately opens it.
+ document.querySelectorAll('#advancedMain > .panel').forEach(p=>{if(p.id!=='coachHome')p.style.marginBottom='12px';});
+ sync();
+})();
 
 </script>
 </body>
