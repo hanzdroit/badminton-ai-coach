@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#101820">
-<title>Badminton AI Coach — Stage 8 Setup Wizard</title>
+<title>Badminton AI Coach — Stages 8–15.5</title>
 <style>
 :root{color-scheme:dark;--bg:#101820;--panel:#182630;--muted:#9fb0bb;--accent:#63e6be;--line:#30434f}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f4f7f8;font:15px system-ui,-apple-system,Segoe UI,sans-serif}
@@ -80,13 +80,16 @@ footer{color:var(--muted);font-size:11px;text-align:center;padding:8px 16px 22px
 .stage910Timeline{display:grid;gap:8px;margin-top:12px}
 .stage910Event{display:flex;justify-content:space-between;gap:10px;padding:10px 12px;background:#101b23;border:1px solid var(--line);border-radius:10px;font-size:13px}
 .stage910Event small{color:var(--muted)}
+.stageQuickLinks{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.stageQuickLinks a{display:inline-flex;align-items:center;background:#263b47;color:#f4f7f8;border:1px solid #45606e;border-radius:10px;padding:9px 12px;font-weight:650;font-size:13px;text-decoration:none}
+.stageQuickLinks a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 @media(max-width:560px){.stage910Controls select{flex:1;min-width:140px}.stage910Event{flex-direction:column}}
 </style>
 
 </head>
 <body>
 <header>
-  <div><h1>🏸 Badminton AI Coach</h1><div class="sub">Stage 8 · Pre-Recording Setup Wizard</div></div>
+  <div><h1>🏸 Badminton AI Coach</h1><div class="sub">Stages 8–15.5 · Integrated coaching prototype</div></div>
   <div class="status"><span id="liveDot" class="dot"></span><span id="statusText">Not connected</span></div>
 </header>
 
@@ -162,6 +165,28 @@ footer{color:var(--muted);font-size:11px;text-align:center;padding:8px 16px 22px
 </div>
 
 <main>
+  <section class="panel" id="coachHome">
+    <div class="toolbar" style="justify-content:space-between">
+      <div><h2>Stage 15 · Badminton AI Coach</h2><p class="note">Your session hub for camera setup, court mapping and movement analysis. Shuttle and rally labs are synthetic demonstrations.</p></div>
+      <span class="stage910Pill" id="coachReadiness">SETUP NEEDED</span>
+    </div>
+    <div class="metrics">
+      <div class="metric"><div class="label">Camera & pose</div><div class="value" id="coachCameraState" style="font-size:16px">Not connected</div></div>
+      <div class="metric"><div class="label">Selected player</div><div class="value" id="coachPlayerState" style="font-size:16px">Not selected</div></div>
+      <div class="metric"><div class="label">Court mapping</div><div class="value" id="coachCourtState" style="font-size:16px">Not calibrated</div></div>
+      <div class="metric"><div class="label">Session</div><div class="value" id="coachSessionState" style="font-size:16px">Not started</div></div>
+    </div>
+    <div class="toolbar" style="margin-top:12px">
+      <button id="coachCameraLink">Go to camera setup</button>
+      <button id="coachCalibrateLink">Calibrate court</button>
+      <button id="coachStartBtn" class="primary" disabled>Start live session</button>
+    </div>
+    <div class="stageQuickLinks" aria-label="Quick links to coach stages">
+      <a href="#shuttleLabPanel">Stages 9–10 demos</a><a href="#footworkPanel">Stage 11 · Footwork</a><a href="#rallyAnalysisPanel">Stage 12 · Rally</a><a href="#performanceDashboard">Stage 13 · Dashboard</a><a href="#coachingRecommendations">Stage 14 · Coach prompts</a>
+    </div>
+    <p class="note" id="coachGuidance" style="margin:12px 0 0">Enable the camera, select yourself from the detected players, then calibrate the court for mapped movement analysis.</p>
+  </section>
+
   <section class="panel">
     <div class="toolbar" style="justify-content:space-between;margin-bottom:12px">
       <div class="toolbar">
@@ -192,7 +217,7 @@ footer{color:var(--muted);font-size:11px;text-align:center;padding:8px 16px 22px
     <p id="selection" class="note">No player selected. Tap your skeleton when it appears.</p>
   </section>
 
-  <section class="panel">
+  <section class="panel" id="courtCalibrationPanel">
     <h2>Stage 4 · Court calibration</h2>
     <p class="note">Mark the four visible outer court corners in this order: far-left, far-right, near-right, near-left. Keep the phone fixed and make sure the whole court is visible.</p>
     <div class="toolbar"><button id="calibrateBtn">Calibrate court</button><button id="clearCourtBtn">Clear calibration</button><span id="calibrationStatus" class="note">Court not calibrated</span></div>
@@ -249,7 +274,32 @@ footer{color:var(--muted);font-size:11px;text-align:center;padding:8px 16px 22px
   </section>
 
 
-  <section class="panel">
+  <section class="panel" id="stage155Panel">
+    <div class="toolbar" style="justify-content:space-between">
+      <div><h2>Stage 15.5 · Real shuttlecock detector (TrackNetV3)</h2><p class="note">Experimental local-video test. Select a short match clip, load the ONNX model, then run an 8-frame tracking window. Your video stays in this browser.</p></div>
+      <span class="stage910Pill" id="tracknetBadge">MODEL NOT LOADED</span>
+    </div>
+    <div class="stage910Controls">
+      <input id="tracknetVideo" type="file" accept="video/*" style="max-width:100%;color:#d5e0e5">
+      <select id="tracknetVariant" aria-label="TrackNet model variant"><option value="fp32">TrackNetV3 FP32 · accuracy test</option><option value="fp16">TrackNetV3 FP16 · lighter download</option></select>
+      <button id="loadTracknetBtn" class="primary">Load TrackNetV3</button>
+      <button id="runTracknetBtn" disabled>Analyse clip</button>
+      <button id="clearTracknetBtn">Clear</button>
+    </div>
+    <div class="metrics" style="margin-top:12px">
+      <div class="stage910Stat"><div class="label">Model status</div><div class="value" id="tracknetModelState" style="font-size:15px">Not loaded</div></div>
+      <div class="stage910Stat"><div class="label">Frames analysed</div><div class="value" id="tracknetFrames">0</div></div>
+      <div class="stage910Stat"><div class="label">Candidate points</div><div class="value" id="tracknetPoints">0</div></div>
+      <div class="stage910Stat"><div class="label">Runtime</div><div class="value" id="tracknetRuntime">—</div></div>
+    </div>
+    <video id="tracknetVideoPreview" controls playsinline muted style="display:none;width:100%;max-height:320px;background:#05090c;border-radius:12px;margin-top:12px"></video>
+    <canvas id="tracknetCanvas" class="stage910Canvas" width="640" height="360" aria-label="TrackNetV3 detected shuttlecock positions"></canvas>
+    <p id="tracknetMessage" class="note">Choose a short video clip first. Start with 5–15 seconds, a fixed camera and the whole court visible.</p>
+    <p class="note">Model source: <a href="https://huggingface.co/jinergenkai/badminton-analysis-web" target="_blank" rel="noopener" style="color:#63e6be">Hugging Face · badminton-analysis-web</a>. The model card documents TrackNetV3 ONNX heatmaps, an input of median background plus 8 RGB frames, and browser inference through ONNX Runtime Web. The first model download may be large. Only the model is downloaded; this app does not upload your video.</p>
+    <div class="wizCallout">Experimental integration: the detector's output heatmaps are decoded into candidate coordinates. This is not yet a validated tracker. We still need to verify the model's input dimensions, preprocessing, confidence calibration and accuracy on your own footage before Stages 16–17.</div>
+  </section>
+
+  <section class="panel" id="shuttleLabPanel">
     <div class="toolbar" style="justify-content:space-between">
       <div><h2>Stage 9 · Shuttlecock detection & tracking lab</h2><p class="note">Explore how a detected shuttlecock position becomes a flight path. The current demo generates sample coordinates; it does not detect a real shuttlecock from the camera yet.</p></div>
       <span class="stage910Pill">SIMULATED DATA</span>
@@ -326,6 +376,65 @@ footer{color:var(--muted);font-size:11px;text-align:center;padding:8px 16px 22px
     <p class="note" style="margin-top:12px">The accelerated preview compresses the 20-minute simulated match into approximately 2 minutes. The full-match generator creates the complete dataset instantly. No real AI detection, video recording or actual performance measurement is involved.</p>
   </section>
 
+  <section class="panel" id="footworkPanel">
+    <div class="toolbar" style="justify-content:space-between">
+      <div><h2>Stage 11 · Footwork movement analysis</h2><p class="note">Review the selected player's mapped court-position path. Camera analysis uses hip movement as a proxy; it cannot identify steps, split-step timing, foot placement or technique.</p></div>
+      <span class="stage910Pill" id="footworkSource">WAITING FOR DATA</span>
+    </div>
+    <div class="metrics">
+      <div class="metric"><div class="label">Mapped samples</div><div class="value" id="footworkSamples">0</div></div>
+      <div class="metric"><div class="label">Path length</div><div class="value" id="footworkDistance">—</div></div>
+      <div class="metric"><div class="label">Direction changes</div><div class="value" id="footworkTurns">—</div></div>
+      <div class="metric"><div class="label">Zones traversed</div><div class="value" id="footworkZones">—</div></div>
+    </div>
+    <canvas id="footworkCanvas" class="stage910Canvas" width="620" height="440" aria-label="Selected-player movement path on a badminton court"></canvas>
+    <div class="stage910Controls"><button id="footworkDemoBtn">Preview sample path</button><button id="clearFootworkBtn">Clear footwork view</button></div>
+    <p id="footworkInsight" class="note" style="margin-bottom:0">Calibrate the court and record a session with a selected player to build a camera-derived movement path.</p>
+  </section>
+
+  <section class="panel" id="rallyAnalysisPanel">
+    <div class="toolbar" style="justify-content:space-between">
+      <div><h2>Stage 12 · Rally analysis</h2><p class="note">Break down rally duration, shot count and event sequence from the Stage 9–10 match dataset.</p></div>
+      <span class="stage910Pill">SIMULATED DATA</span>
+    </div>
+    <div class="metrics">
+      <div class="metric"><div class="label">Rallies analyzed</div><div class="value" id="rallyCount">—</div></div>
+      <div class="metric"><div class="label">Average duration</div><div class="value" id="rallyAvgDuration">—</div></div>
+      <div class="metric"><div class="label">Average shots per rally</div><div class="value" id="rallyAvgShots">—</div></div>
+      <div class="metric"><div class="label">Longest rally</div><div class="value" id="rallyLongest">—</div></div>
+    </div>
+    <canvas id="rallyChart" class="stage910Canvas" width="620" height="250" aria-label="Bar chart of duration for each simulated rally"></canvas>
+    <div class="stage910Controls"><label for="rallySelect" class="note">Inspect rally</label><select id="rallySelect" aria-label="Select a rally to inspect" disabled><option>No match generated</option></select></div>
+    <div id="rallyDetail" class="wizCallout">Generate the Stage 9–10 simulated match to analyze its rallies.</div>
+    <p class="note" style="margin-bottom:0">These summaries describe generated synthetic data only. They are not extracted from recorded footage and do not measure real player performance.</p>
+  </section>
+
+  <section class="panel" id="performanceDashboard">
+    <div class="toolbar" style="justify-content:space-between">
+      <div><h2>Stage 13 · Performance dashboard</h2><p class="note">Session-level movement summary from the selected player's calibrated court positions.</p></div>
+      <span class="stage910Pill" id="dashboardSource">WAITING FOR LIVE SESSION</span>
+    </div>
+    <div class="metrics">
+      <div class="metric"><div class="label">Session duration</div><div class="value" id="dashboardDuration">00:00</div></div>
+      <div class="metric"><div class="label">Mapped samples</div><div class="value" id="dashboardSamples">0</div></div>
+      <div class="metric"><div class="label">Court zones visited</div><div class="value" id="dashboardZones">—</div></div>
+      <div class="metric"><div class="label">Mapped path length</div><div class="value" id="dashboardPath">—</div></div>
+    </div>
+    <canvas id="dashboardChart" class="stage910Canvas" width="620" height="270" aria-label="Court position and depth over a training session"></canvas>
+    <div class="stage910Controls"><button id="dashboardDemoBtn">Preview sample dashboard</button><button id="dashboardLiveBtn">Show live session data</button></div>
+    <p id="dashboardNote" class="note" style="margin-bottom:0">Start a camera session, select a player, and calibrate the court to collect live dashboard data. Session data stays in this browser tab.</p>
+  </section>
+
+  <section class="panel" id="coachingRecommendations">
+    <div class="toolbar" style="justify-content:space-between">
+      <div><h2>Stage 14 · AI coaching recommendations</h2><p class="note">Rule-based practice prompts based on mapped movement patterns.</p></div>
+      <span class="stage910Pill" id="recommendationSource">RULE-BASED BETA</span>
+    </div>
+    <div id="recommendationList" class="stage910Timeline"><div class="wizCallout">Calibrate the court and record a selected-player session to receive movement-based practice prompts.</div></div>
+    <div class="stage910Controls"><button id="recommendationDemoBtn">Preview sample recommendations</button><button id="recommendationLiveBtn">Use live session data</button></div>
+    <p class="note" style="margin-bottom:0">Suggestions are simple movement-pattern prompts, not advice from a trained AI coach. The app does not use real shuttle detection, shot events or technique scoring for these suggestions.</p>
+  </section>
+
   <section class="panel">
     <h2>Selected-player session indicators</h2>
     <div class="metrics">
@@ -356,7 +465,7 @@ footer{color:var(--muted);font-size:11px;text-align:center;padding:8px 16px 22px
       <li>Use landscape orientation, rear camera and a stable tripod or safe elevated surface.</li>
       <li>Good lighting helps. At long distances, pose landmarks may be less accurate.</li>
       <li>Video frames are processed locally in the browser and are not uploaded by this app. The AI runtime and pose model are downloaded from public hosting when needed.</li>
-      <li>Stage 9 and Stage 10 currently include simulated shuttle trajectories and a rule-based shot-label demonstration only. Real shuttlecock detection, real shot classification and smash-speed measurement are not yet integrated.</li>
+      <li>Stage 9 uses synthetic shuttle trajectories. No YOLO or shuttle-specific real detector is integrated. Stage 10 shot labels are a rule-based demonstration, not real shot classification.</li>
     </ul>
   </section>
 </main>
@@ -372,6 +481,7 @@ let frameTimes=[], movementTotal=0, records=[], processing=false, rafId=null;
 let tracks=[], nextId=1, selectedId=null, selectedLastHip=null, selectedSamples=0;
 let calibrationMode=false, courtCorners=[], courtHomography=null, lastCourtPoint=null;
 let previousBaseDistance=null, recoveryReturns=0, recoveryTowards=0, recoveryAway=0;
+let footworkSamples=[],lastFootworkSampleAt=0,footworkIsDemo=false,lastSessionDuration=0,dashboardPreview=false,recommendationPreview=false;
 const HEAT_KEY="badmintonCoachHeatmapV1";
 let heatCounts=loadHeatCounts();
 function loadHeatCounts(){
@@ -450,7 +560,28 @@ function addHeatSample(pt){
 const COLORS=["#63e6be","#ffcc66","#7db7ff","#ff8fa3"];
 const MAX_DISTANCE=.22, LOST_AFTER=12;
 
-function status(text,on=false){$("statusText").textContent=text;$("liveDot").classList.toggle("on",on)}
+function status(text,on=false){$("statusText").textContent=text;$("liveDot").classList.toggle("on",on);renderCoachHome()}
+function renderCoachHome(){
+  const cameraReady=!!stream&&!!landmarker,playerReady=selectedId!==null,courtReady=!!courtHomography,ready=cameraReady&&playerReady&&courtReady;
+  $("coachCameraState").textContent=cameraReady?"Ready":(stream?"Pose model loading":"Not connected");
+  $("coachPlayerState").textContent=playerReady?"Player "+selectedId:"Not selected";
+  $("coachCourtState").textContent=courtReady?"Calibrated":"Not calibrated";
+  $("coachSessionState").textContent=running?"Recording":(records.length?"Stopped":"Not started");
+  $("coachReadiness").textContent=running?"SESSION LIVE":(ready?"READY TO TRAIN":"SETUP NEEDED");
+  $("coachStartBtn").textContent=running?"Stop live session":"Start live session";
+  $("coachStartBtn").disabled=running?false:!ready;
+  $("coachGuidance").textContent=running
+    ?"Live camera session is recording. Use Stop live session here or in the camera controls. Mapped analysis updates as player positions are detected."
+    :!stream?"Enable the camera and pose model, select yourself from the detected players, then calibrate the court."
+      :!landmarker?"Camera is connected; wait for the on-device pose model to finish loading."
+        :!playerReady?"Select your player from the live camera or detected-player list."
+          :!courtReady?"Court mapping is required for heatmap, footwork, dashboard and coaching-prompt data."
+            :"Setup is ready. Start training to collect selected-player movement data; shuttle and rally labs remain simulations.";
+}
+$("coachCameraLink").addEventListener("click",()=>{$("stage").scrollIntoView({behavior:"smooth",block:"center"});});
+$("coachCalibrateLink").addEventListener("click",()=>{$("stage").scrollIntoView({behavior:"smooth",block:"center"});if(stream)$("calibrateBtn").click();});
+$("coachStartBtn").addEventListener("click",()=>{if(running)$("stopBtn").click();else $("startBtn").click();renderCoachHome();});
+renderCoachHome();
 function fmt(sec){return String(Math.floor(sec/60)).padStart(2,"0")+":"+String(Math.floor(sec%60)).padStart(2,"0")}
 function hipOf(lm){
   const l=lm[23],r=lm[24];
@@ -526,6 +657,7 @@ function renderPlayers(){
   $("selection").textContent=selectedId===null
     ?"No player selected. Tap your skeleton when it appears."
     :"Following temporary ID: Player "+selectedId+". If identity looks wrong after players cross, select yourself again.";
+  renderCoachHome();
 }
 function selectPlayer(id){
   if(selectedId!==id){
@@ -534,6 +666,7 @@ function selectPlayer(id){
   }
   $("selectedId")?.remove();
   renderPlayers();
+  renderCoachHome();
 }
 function solveLinear(A,b){
   const n=b.length,M=A.map((r,i)=>r.concat([b[i]]));
@@ -592,13 +725,14 @@ canvas.addEventListener("click",e=>{
     const names=["far-left","far-right","near-right","near-left"];
     $("calibrationHelp").textContent=courtCorners.length===4?"Check the yellow outline and pink halfway net line.":"Corner "+courtCorners.length+"/4 marked. Tap the "+names[courtCorners.length]+" corner next.";
     if(courtCorners.length===4){courtHomography=buildHomography(courtCorners);calibrationMode=false;$("calibrateBtn").textContent="Recalibrate court";$("calibrationStatus").textContent=courtHomography?"4 corners marked":"Calibration failed";$("courtState").textContent=courtHomography?"Ready":"Error";$("calibrationHelp").textContent=courtHomography?"Court mapped. Keep the camera fixed; recalibrate if it moves.":"Could not map court. Clear and try again.";}
+    renderCoachHome();
     drawAll();return;
   }
   let best=null,bestDistance=.16;for(const t of activeTracks()){const d=Math.hypot(t.hip.x-point.x,t.hip.y-point.y);if(d<bestDistance){best=t;bestDistance=d;}}
   if(best)selectPlayer(best.id);
 });
-$("calibrateBtn").addEventListener("click",()=>{courtCorners=[];courtHomography=null;calibrationMode=true;lastCourtPoint=null;$("courtState").textContent="Marking";$("courtSide").textContent="—";$("courtZone").textContent="—";$("courtPosition").textContent="—";$("calibrationStatus").textContent="Mark 4 corners";$("calibrationHelp").textContent="Tap far-left, far-right, near-right, then near-left outer court corner.";drawAll();});
-$("clearCourtBtn").addEventListener("click",()=>{calibrationMode=false;courtCorners=[];courtHomography=null;lastCourtPoint=null;$("courtState").textContent="Off";$("courtSide").textContent="—";$("courtZone").textContent="—";$("courtPosition").textContent="—";$("calibrationStatus").textContent="Court not calibrated";$("calibrationHelp").textContent="Court calibration cleared.";drawAll();});
+$("calibrateBtn").addEventListener("click",()=>{courtCorners=[];courtHomography=null;calibrationMode=true;lastCourtPoint=null;$("courtState").textContent="Marking";$("courtSide").textContent="—";$("courtZone").textContent="—";$("courtPosition").textContent="—";$("calibrationStatus").textContent="Mark 4 corners";$("calibrationHelp").textContent="Tap far-left, far-right, near-right, then near-left outer court corner.";drawAll();renderCoachHome();});
+$("clearCourtBtn").addEventListener("click",()=>{calibrationMode=false;courtCorners=[];courtHomography=null;lastCourtPoint=null;$("courtState").textContent="Off";$("courtSide").textContent="—";$("courtZone").textContent="—";$("courtPosition").textContent="—";$("calibrationStatus").textContent="Court not calibrated";$("calibrationHelp").textContent="Court calibration cleared.";drawAll();renderCoachHome();});
 $("clearHeatBtn").addEventListener("click",()=>{heatCounts=Array(18).fill(0);saveHeatCounts();renderHeatmap();});
 $("demoHeatBtn").addEventListener("click",()=>{
   heatCounts=[4,8,3,7,15,6,5,12,4,3,7,4,2,5,3,1,2,1];saveHeatCounts();renderHeatmap();
@@ -623,6 +757,109 @@ function updateRecovery(point){
     : "Collecting movement samples. The suggested base point is the centre of the selected player's half.";
   previousBaseDistance=dist;
 }
+function drawFootworkPath(){
+  const c=$("footworkCanvas"),g=c.getContext("2d"),w=c.width,h=c.height;
+  g.clearRect(0,0,w,h);g.fillStyle="#0e4d3e";g.fillRect(0,0,w,h);
+  const x=190,y=18,cw=240,ch=404;
+  g.strokeStyle="#f1f7f3";g.lineWidth=2;g.strokeRect(x,y,cw,ch);
+  g.lineWidth=1;for(let i=1;i<3;i++){g.beginPath();g.moveTo(x+cw*i/3,y);g.lineTo(x+cw*i/3,y+ch);g.stroke();}
+  for(let i=1;i<6;i++){g.beginPath();g.moveTo(x,y+ch*i/6);g.lineTo(x+cw,y+ch*i/6);g.stroke();}
+  g.strokeStyle="#ff8fa3";g.lineWidth=4;g.beginPath();g.moveTo(x,y+ch/2);g.lineTo(x+cw,y+ch/2);g.stroke();
+  g.fillStyle="#d5e2e5";g.font="12px system-ui";g.textAlign="center";g.fillText("FAR BASELINE",w/2,14);g.fillText("NEAR BASELINE",w/2,h-8);
+  if(!footworkSamples.length){g.fillStyle="#d5e2e5";g.fillText("No mapped movement path yet",w/2,h/2);g.textAlign="left";return;}
+  g.beginPath();footworkSamples.forEach((p,i)=>{const px=x+p.x*cw,py=y+p.y*ch;i?g.lineTo(px,py):g.moveTo(px,py);});
+  g.strokeStyle=footworkIsDemo?"#ffd166":"#63e6be";g.lineWidth=4;g.lineJoin="round";g.lineCap="round";g.stroke();
+  footworkSamples.forEach((p,i)=>{const px=x+p.x*cw,py=y+p.y*ch;g.beginPath();g.fillStyle=i===footworkSamples.length-1?"#fff":(footworkIsDemo?"#ffd166":"#63e6be");g.arc(px,py,i===0||i===footworkSamples.length-1?6:3.5,0,Math.PI*2);g.fill();});
+  g.textAlign="left";
+}
+function renderFootwork(){
+  const pts=footworkSamples;$("footworkSamples").textContent=String(pts.length);
+  if(!pts.length){$("footworkDistance").textContent="—";$("footworkTurns").textContent="—";$("footworkZones").textContent="—";$("footworkSource").textContent="WAITING FOR DATA";$("footworkInsight").textContent="Calibrate the court and record a session with a selected player to build a camera-derived movement path.";drawFootworkPath();if(!footworkIsDemo){renderDashboard();renderRecommendations();}return;}
+  let distance=0,turns=0,prevVector=null;const zones=new Set();
+  for(let i=0;i<pts.length;i++){
+    const p=pts[i];zones.add(Math.min(5,Math.floor(p.y*6))+":"+Math.min(2,Math.floor(p.x*3)));
+    if(i===0)continue;const q=pts[i-1],dx=p.x-q.x,dy=p.y-q.y,d=Math.hypot(dx,dy);
+    if(d<.012)continue;distance+=d;const v={x:dx/d,y:dy/d};
+    if(prevVector&&d>=.025){const dot=Math.max(-1,Math.min(1,prevVector.x*v.x+prevVector.y*v.y));if(Math.acos(dot)>Math.PI*.36)turns++;}
+    if(d>=.025)prevVector=v;
+  }
+  $("footworkDistance").textContent=distance.toFixed(2)+" map units";$("footworkTurns").textContent=String(turns);$("footworkZones").textContent=zones.size+" / 18";
+  $("footworkSource").textContent=footworkIsDemo?"ILLUSTRATIVE SAMPLE":"LIVE · HIP POSITION PROXY";
+  $("footworkInsight").textContent=footworkIsDemo
+    ? "Illustrative sample path only. Direction changes use a simple position-path threshold; they are not counted footwork steps or a technique rating."
+    : "Camera-derived hip positions are mapped to the calibrated court. The path summarizes movement only; it cannot assess foot placement, split steps, balance, or movement quality.";
+  drawFootworkPath();if(!footworkIsDemo){renderDashboard();renderRecommendations();}
+}
+function renderDashboard(){
+  const preview=dashboardPreview,rawPreview=[[.50,.76],[.24,.63],[.50,.74],[.76,.55],[.50,.73],[.28,.42],[.50,.72],[.73,.34],[.50,.72],[.50,.47]].map((p,i)=>({x:p[0],y:p[1],t:i*.9}));
+  const pts=preview?rawPreview:(footworkIsDemo?[]:footworkSamples),c=$("dashboardChart"),g=c.getContext("2d"),w=c.width,h=c.height;
+  const sessionSecs=preview?rawPreview[rawPreview.length-1].t:(running?(performance.now()-sessionStart)/1000:lastSessionDuration);
+  $("dashboardDuration").textContent=fmt(sessionSecs);
+  $("dashboardSource").textContent=preview?"ILLUSTRATIVE SAMPLE":(pts.length?"LIVE SESSION · CAMERA":"WAITING FOR LIVE SESSION");
+  $("dashboardSamples").textContent=String(pts.length);
+  const zones=new Set(pts.map(p=>Math.min(5,Math.floor(p.y*6))+":"+Math.min(2,Math.floor(p.x*3))));
+  $("dashboardZones").textContent=pts.length?zones.size+" / 18":"—";
+  let distance=0;for(let i=1;i<pts.length;i++){const d=Math.hypot(pts[i].x-pts[i-1].x,pts[i].y-pts[i-1].y);if(d>=.012)distance+=d;}
+  $("dashboardPath").textContent=pts.length>1?distance.toFixed(2)+" map units":"—";
+  g.clearRect(0,0,w,h);g.fillStyle="#0e4d3e";g.fillRect(0,0,w,h);
+  const l=52,r=16,t=34,b=34,pw=w-l-r,ph=h-t-b;
+  for(let i=0;i<=4;i++){const yy=t+ph*i/4;g.strokeStyle="rgba(245,250,250,.2)";g.beginPath();g.moveTo(l,yy);g.lineTo(w-r,yy);g.stroke();g.fillStyle="#d5e2e5";g.font="10px system-ui";g.textAlign="right";g.fillText(String(100-i*25)+"%",l-7,yy+3);}
+  g.font="11px system-ui";g.textAlign="left";g.fillStyle="#63e6be";g.fillRect(l,t-19,10,3);g.fillText("Court width",l+15,t-15);g.fillStyle="#ffd166";g.fillRect(l+105,t-19,10,3);g.fillText("Court depth",l+120,t-15);
+  if(pts.length>1){
+    const span=Math.max(.001,pts[pts.length-1].t-pts[0].t),series=[{key:"x",color:"#63e6be"},{key:"y",color:"#ffd166"}];
+    series.forEach(s=>{g.beginPath();pts.forEach((p,i)=>{const xx=l+(p.t-pts[0].t)/span*pw,yy=t+(1-p[s.key])*ph;i?g.lineTo(xx,yy):g.moveTo(xx,yy);});g.strokeStyle=s.color;g.lineWidth=2.5;g.stroke();});
+    g.fillStyle="#d5e2e5";g.textAlign="left";g.fillText(pts[0].t.toFixed(1)+" s",l,h-9);g.textAlign="right";g.fillText(pts[pts.length-1].t.toFixed(1)+" s",w-r,h-9);
+  }else{
+    g.fillStyle="#d5e2e5";g.textAlign="center";g.fillText("No mapped positions yet",w/2,t+ph/2);g.textAlign="left";
+  }
+  $("dashboardNote").textContent=preview
+    ?"Illustrative sample only. This preview is synthetic and is kept separate from camera-session data."
+    :(pts.length?"Live dashboard summarizes this tab's calibrated hip-position samples. Values are movement proxies, not validated performance scores."
+      :"Start a camera session, select a player, and calibrate the court to collect live dashboard data. Session data stays in this browser tab.");
+}
+$("dashboardDemoBtn").addEventListener("click",()=>{dashboardPreview=true;renderDashboard();});
+$("dashboardLiveBtn").addEventListener("click",()=>{dashboardPreview=false;renderDashboard();});
+function renderRecommendations(){
+  const preview=recommendationPreview,basePath=[[.50,.76],[.24,.63],[.50,.74],[.76,.55],[.50,.73],[.28,.42],[.50,.72],[.73,.34],[.50,.72],[.50,.47],[.50,.76],[.20,.58],[.50,.73],[.80,.46],[.50,.72],[.33,.31]];
+  const pts=preview?Array.from({length:48},(_,i)=>{const p=basePath[i%basePath.length];return{x:p[0],y:p[1],t:i*.25};}):(footworkIsDemo?[]:footworkSamples);
+  const list=$("recommendationList");$("recommendationSource").textContent=preview?"ILLUSTRATIVE SAMPLE":(pts.length?"RULE-BASED · LIVE MOVEMENT":"WAITING FOR SESSION DATA");
+  if(!pts.length){list.innerHTML='<div class="wizCallout">Calibrate the court, select a player, and record a session. The app needs mapped position samples before it can suggest movement prompts.</div>';return;}
+  const cards=[];
+  if(pts.length<40){
+    cards.push({title:"Collect a longer sample",body:"There are "+pts.length+" mapped positions so far. Record at least 40 mapped samples before using the exploratory prompts; that is a rough data threshold, not a coaching-quality guarantee."});
+  }else{
+    const colNames=["Left","Centre","Right"],rowNames=["Far backcourt","Far midcourt","Far frontcourt","Near frontcourt","Near midcourt","Near backcourt"],counts=Array(18).fill(0);
+    pts.forEach(p=>{const col=Math.min(2,Math.floor(p.x*3)),row=Math.min(5,Math.floor(p.y*6));counts[row*3+col]++;});
+    const missing=counts.findIndex(n=>n===0),least=counts.indexOf(Math.min(...counts)),max=Math.max(...counts);
+    const zoneName=i=>colNames[i%3]+" · "+rowNames[Math.floor(i/3)];
+    if(missing>=0){
+      cards.push({title:"Try a controlled route through an unobserved zone",body:"The current path has no mapped samples in "+zoneName(missing)+". If that area fits your drill, add a deliberate shadow movement through it and compare another session."});
+    }else if(counts[least]<max*.35){
+      cards.push({title:"Explore a less-visited zone",body:zoneName(least)+" has fewer mapped samples than the most-visited area. Consider a controlled shadow movement there if it fits your current training goal."});
+    }else{
+      cards.push({title:"Keep varying the route",body:"The mapped path reached all 18 court zones. Repeat a familiar drill and compare how the route changes; broad coverage alone does not show whether positioning was tactically correct."});
+    }
+    const left=pts.filter(p=>p.x<1/3).length,right=pts.filter(p=>p.x>=2/3).length,edgeTotal=left+right;
+    if(edgeTotal>=10&&Math.min(left,right)<edgeTotal*.25){
+      const side=left<right?"left":"right";
+      cards.push({title:"Balance lateral practice",body:"Fewer mapped positions fell on the "+side+" side of the court. In a controlled shadow drill, consider rehearsing movement in that direction too; this is a coverage observation, not a movement-quality rating."});
+    }
+    const recent=pts.slice(-8),nearSide=recent.filter(p=>p.y>=.5).length>=recent.length/2,base={x:.5,y:nearSide ? .75 : .25},last=pts[pts.length-1],dist=Math.hypot(last.x-base.x,last.y-base.y);
+    if(dist>.22){
+      cards.push({title:"Finish the drill with a return to base",body:"The latest mapped position is away from the estimated centre of your observed half. Try ending a shadow-movement repetition with a comfortable return toward that area. The app cannot tell whether a shot preceded the movement."});
+    }
+  }
+  list.innerHTML=cards.map(c=>'<div class="stage910Event"><span><strong>'+c.title+'</strong><br><small>'+c.body+'</small></span></div>').join("");
+  if(preview)list.innerHTML+='<div class="note">Illustrative sample input only. These prompts are generated from synthetic positions, not your performance.</div>';
+}
+$("recommendationDemoBtn").addEventListener("click",()=>{recommendationPreview=true;renderRecommendations();});
+$("recommendationLiveBtn").addEventListener("click",()=>{recommendationPreview=false;renderRecommendations();});
+$("footworkDemoBtn").addEventListener("click",()=>{
+  const raw=[[.50,.76],[.50,.71],[.23,.63],[.37,.68],[.50,.75],[.77,.56],[.60,.65],[.50,.74],[.27,.42],[.42,.55],[.51,.72],[.74,.34],[.62,.52],[.50,.73],[.51,.40],[.50,.72]];
+  footworkSamples=raw.map((p,i)=>({x:p[0],y:p[1],t:i*.55}));footworkIsDemo=true;renderFootwork();
+});
+$("clearFootworkBtn").addEventListener("click",()=>{footworkSamples=[];footworkIsDemo=false;renderFootwork();});
+renderFootwork();
 function processSelectedPlayer(now){
   const chosen=tracks.find(t=>t.id===selectedId&&t.missed===0);
   $("pose").textContent=chosen?"Yes":"No";
@@ -637,6 +874,11 @@ function processSelectedPlayer(now){
   $("movement").textContent=(movementTotal*100).toFixed(1);
   lastCourtPoint=mapToCourt(hip);
   updateRecovery(lastCourtPoint);
+  if(lastCourtPoint&&now-lastFootworkSampleAt>=250){
+    footworkSamples.push({x:lastCourtPoint.x,y:lastCourtPoint.y,t:(now-sessionStart)/1000});
+    if(footworkSamples.length>600)footworkSamples.shift();
+    lastFootworkSampleAt=now;footworkIsDemo=false;dashboardPreview=false;recommendationPreview=false;renderFootwork();
+  }
   if(lastCourtPoint){$("courtSide").textContent=lastCourtPoint.y<.5?"Far side":"Near side";$("courtZone").textContent=courtZone(lastCourtPoint);$("courtPosition").textContent=(lastCourtPoint.x*100).toFixed(0)+"%, "+(lastCourtPoint.y*100).toFixed(0)+"%";}
   else if(courtHomography){$("courtSide").textContent="Outside";$("courtZone").textContent="Outside";$("courtPosition").textContent="—";}
   records.push({
@@ -670,13 +912,15 @@ function processFrame(now){
 $("startBtn").addEventListener("click",()=>{
   if(!landmarker)return;
   running=true;sessionStart=performance.now();lastVideoTime=-1;tracks=[];nextId=1;
+  lastSessionDuration=0;dashboardPreview=false;recommendationPreview=false;
   movementTotal=0;selectedLastHip=null;selectedSamples=0;records=[];frameTimes=[];
+  footworkSamples=[];lastFootworkSampleAt=0;footworkIsDemo=false;renderFootwork();
   previousBaseDistance=null;recoveryReturns=0;recoveryTowards=0;recoveryAway=0;
   $("recoveryDistance").textContent="—";$("recoveryTrend").textContent="—";$("recoveryReturns").textContent="0";$("recoveryProximity").textContent="—";
   $("recoveryInsight").textContent="Collecting movement samples relative to the suggested base point.";
   $("time").textContent="00:00";$("pose").textContent="—";$("movement").textContent="0.0";$("fps").textContent="—";
   $("startBtn").disabled=true;$("stopBtn").disabled=false;$("downloadBtn").disabled=true;
-  status("Training live",true);
+  status("Training live",true);renderCoachHome();
   $("observation").textContent="Collecting movement samples for the selected player. Select yourself from the video or player list.";
   timer=setInterval(()=>$("time").textContent=fmt((performance.now()-sessionStart)/1000),250);
   rafId=requestAnimationFrame(processFrame);
@@ -684,10 +928,12 @@ $("startBtn").addEventListener("click",()=>{
 function stopSession(){
   running=false;cancelAnimationFrame(rafId);clearInterval(timer);
   $("startBtn").disabled=!landmarker;$("stopBtn").disabled=true;
-  $("downloadBtn").disabled=records.length===0;status("Session stopped");
+  $("downloadBtn").disabled=records.length===0;status("Session stopped");renderCoachHome();
   const secs=(performance.now()-sessionStart)/1000;
+  lastSessionDuration=secs;
   $("time").textContent=fmt(secs);
   $("observation").textContent=`Session: ${fmt(secs)}. Selected-player samples: ${selectedSamples}. Movement index: ${(movementTotal*100).toFixed(1)}. These are preliminary tracking indicators, not a validated badminton performance score.`;
+  renderDashboard();
 }
 $("stopBtn").addEventListener("click",stopSession);
 $("downloadBtn").addEventListener("click",()=>{
@@ -853,6 +1099,26 @@ function drawMatchCourt(event){
     ctx.fillStyle="#fff";ctx.font="13px system-ui";ctx.textAlign="center";ctx.fillText("Generate a match to view simulated play",w/2,h/2+4);ctx.textAlign="left";
   }
 }
+function renderRallyAnalysis(){
+  const rallies=matchSim.rallies,events=matchSim.events,select=$("rallySelect"),c=$("rallyChart"),g=c.getContext("2d"),w=c.width,h=c.height;
+  g.clearRect(0,0,w,h);g.fillStyle="#0e4d3e";g.fillRect(0,0,w,h);
+  if(!rallies.length){$("rallyCount").textContent="—";$("rallyAvgDuration").textContent="—";$("rallyAvgShots").textContent="—";$("rallyLongest").textContent="—";select.disabled=true;$("rallyDetail").textContent="Generate the Stage 9–10 simulated match to analyze its rallies.";g.fillStyle="#d5e2e5";g.font="13px system-ui";g.textAlign="center";g.fillText("No rally data yet",w/2,h/2);g.textAlign="left";return;}
+  const durations=rallies.map(r=>r.end-r.start),avgDuration=durations.reduce((a,b)=>a+b,0)/rallies.length,avgShots=rallies.reduce((a,r)=>a+r.shots,0)/rallies.length;
+  const longestIndex=durations.indexOf(Math.max(...durations));
+  $("rallyCount").textContent=String(rallies.length);$("rallyAvgDuration").textContent=avgDuration.toFixed(1)+" s";$("rallyAvgShots").textContent=avgShots.toFixed(1);$("rallyLongest").textContent="#"+(longestIndex+1)+" · "+durations[longestIndex].toFixed(1)+" s";
+  if(select.options.length!==rallies.length){select.innerHTML=rallies.map((r,i)=>"<option value=\""+i+"\">Rally "+String(i+1).padStart(2,"0")+" · "+durations[i].toFixed(1)+" s · "+r.shots+" shots</option>").join("");select.disabled=false;select.value=String(longestIndex);}
+  const selected=Number(select.value)||0,pl=44,pr=12,pt=24,pb=34,plotW=w-pl-pr,plotH=h-pt-pb,max=Math.max(...durations),slot=plotW/rallies.length,bw=Math.max(2,slot-2);
+  g.strokeStyle="rgba(245,250,250,.28)";g.lineWidth=1;g.beginPath();g.moveTo(pl,pt+plotH);g.lineTo(w-pr,pt+plotH);g.stroke();
+  for(let i=0;i<rallies.length;i++){const bh=Math.max(2,durations[i]/max*plotH),bx=pl+i*slot+(slot-bw)/2,by=pt+plotH-bh;g.fillStyle=i===selected?"#ffd166":"#63e6be";g.fillRect(bx,by,bw,bh);}
+  g.fillStyle="#d5e2e5";g.font="11px system-ui";g.textAlign="left";g.fillText("Rally duration (seconds)",pl,15);g.textAlign="center";g.fillText("1",pl,h-9);g.fillText(String(rallies.length),w-pr,h-9);g.textAlign="left";
+  const r=rallies[selected],these=events.filter(e=>e.rally===r.number),byPlayer=[1,2,3,4].map(p=>these.filter(e=>e.player===p).length),types=[...new Set(these.map(e=>e.shot))];
+  $("rallyDetail").innerHTML="<strong>Rally "+r.number+"</strong> · "+formatMatchTime(r.start)+"–"+formatMatchTime(r.end)+"<br>"+r.shots+" simulated shots · "+durations[selected].toFixed(1)+" seconds<br>Shot events by player: P1 "+byPlayer[0]+", P2 "+byPlayer[1]+", P3 "+byPlayer[2]+", P4 "+byPlayer[3]+"<br>Shot patterns shown: "+(types.join(", ")||"—");
+}
+$("rallySelect").addEventListener("change",renderRallyAnalysis);
+$("rallyChart").addEventListener("click",e=>{
+  if(!matchSim.rallies.length)return;const rect=$("rallyChart").getBoundingClientRect(),x=(e.clientX-rect.left)*$("rallyChart").width/rect.width;
+  const i=Math.max(0,Math.min(matchSim.rallies.length-1,Math.floor((x-44)/(($("rallyChart").width-56)/matchSim.rallies.length))));$("rallySelect").value=String(i);renderRallyAnalysis();
+});
 function buildSimulatedMatch(){
   const rand=seededRand(20261120),events=[],rallies=[];
   const totalRallies=42,totalShots=186;
@@ -905,6 +1171,7 @@ function buildSimulatedMatch(){
     {time:"15:06",title:"Rally 32",detail:"Late-match phase"},
     {time:"20:00",title:"Match ended",detail:"Full simulated dataset"}
   ].map(x=>`<div class="stage910Event"><span><strong>${x.title}</strong><br><small>${x.detail}</small></span><strong>${x.time}</strong></div>`).join("");
+  renderRallyAnalysis();
   drawMatchCourt(matchSim.events[0]);
 }
 function renderMatchAt(seconds){
@@ -932,6 +1199,79 @@ $("playMatchPreview").addEventListener("click",()=>{
 $("pauseMatchPreview").addEventListener("click",()=>{stopMatchTimer();$("matchSimStatus").textContent="Preview paused at "+formatMatchTime(matchSim.elapsed)+". Press Play to continue.";});
 $("resetMatchPreview").addEventListener("click",()=>{stopMatchTimer();matchSim.elapsed=0;if(matchSim.generated)renderMatchAt(0);else drawMatchCourt(null);$("simClock").textContent="00:00 / 20:00";$("matchSimStatus").textContent=matchSim.generated?"Match preview reset. Generated data is retained.":"Generate a match dataset to begin.";});
 drawMatchCourt(null);
+renderRallyAnalysis();
+
+
+
+// Stage 15.5: experimental TrackNetV3 ONNX local-video integration.
+// The video is read from a local file; no video frames are sent to a server.
+const tn = {ort:null, session:null, videoUrl:null, points:[], busy:false};
+const tnCanvas=$("tracknetCanvas"), tnCtx=tnCanvas.getContext("2d");
+function tnStatus(message){$("tracknetMessage").textContent=message;}
+function tnDraw(points=[]){
+  const c=tnCanvas,g=tnCtx,w=c.width,h=c.height,v=$("tracknetVideoPreview");
+  g.clearRect(0,0,w,h);g.fillStyle="#0b1117";g.fillRect(0,0,w,h);
+  if(v.readyState>=2){const scale=Math.min(w/v.videoWidth,h/v.videoHeight),dw=v.videoWidth*scale,dh=v.videoHeight*scale;g.drawImage(v,(w-dw)/2,(h-dh)/2,dw,dh);}
+  if(points.length){g.strokeStyle="#ffd166";g.lineWidth=2.5;g.beginPath();points.forEach((p,i)=>{const x=p.x*w,y=p.y*h;i?g.lineTo(x,y):g.moveTo(x,y);});g.stroke();
+    points.forEach((p,i)=>{g.beginPath();g.fillStyle="#ff6b6b";g.arc(p.x*w,p.y*h,4,0,Math.PI*2);g.fill();});}
+}
+function tnVideoReady(){const v=$("tracknetVideoPreview");return v.readyState>=2&&v.videoWidth>0&&v.videoHeight>0;}
+$("tracknetVideo").addEventListener("change",e=>{
+  const f=e.target.files&&e.target.files[0];if(!f)return;
+  if(tn.videoUrl)URL.revokeObjectURL(tn.videoUrl);
+  tn.videoUrl=URL.createObjectURL(f);const v=$("tracknetVideoPreview");v.src=tn.videoUrl;v.style.display="block";v.load();
+  v.onloadedmetadata=()=>{tnCanvas.width=v.videoWidth;tnCanvas.height=v.videoHeight;tnDraw();$("runTracknetBtn").disabled=!tn.session;tnStatus(`Clip ready: ${v.videoWidth}×${v.videoHeight}, ${v.duration.toFixed(1)} seconds. Press Analyse clip.`);};
+});
+$("loadTracknetBtn").addEventListener("click",async()=>{
+  if(tn.busy)return;tn.busy=true;$("loadTracknetBtn").disabled=true;$("tracknetModelState").textContent="Loading runtime…";
+  try{
+    tn.ort=await import("https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.webgpu.min.mjs");
+    const variant=$("tracknetVariant").value;
+    const modelUrl=`https://huggingface.co/jinergenkai/badminton-analysis-web/resolve/main/tracknet3_${variant}.onnx`;
+    $("tracknetModelState").textContent="Downloading model…";tnStatus("Downloading TrackNetV3 weights. This may take a while on the first run.");
+    let providers=["webgpu","wasm"];
+    try{tn.session=await tn.ort.InferenceSession.create(modelUrl,{executionProviders:providers,graphOptimizationLevel:"all"});}
+    catch(firstError){console.warn("WebGPU load failed; retrying WASM",firstError);tn.session=await tn.ort.InferenceSession.create(modelUrl,{executionProviders:["wasm"],graphOptimizationLevel:"all"});}
+    const input=tn.session.inputNames[0],output=tn.session.outputNames[0],meta=tn.session.inputMetadata?.[input];
+    $("tracknetModelState").textContent="Loaded · "+(tn.session.handler?.constructor?.name||"ONNX");
+    $("tracknetBadge").textContent="TRACKNET READY";$("tracknetBadge").style.background="#12392f";$("tracknetBadge").style.color="#63e6be";
+    $("runTracknetBtn").disabled=!tnVideoReady();
+    tnStatus(`Model loaded. Input: ${input}; output: ${output}. Input metadata: ${meta?JSON.stringify(meta.dimensions||meta):"not exposed by this runtime"}. Choose a clip and analyse.`);
+  }catch(err){console.error(err);$("tracknetModelState").textContent="Load failed";tnStatus("Could not load the ONNX model: "+(err?.message||err)+". Check connection, browser support and model hosting. No video was uploaded.");}
+  finally{tn.busy=false;$("loadTracknetBtn").disabled=false;}
+});
+function tnFrameAt(video,time){return new Promise((resolve,reject)=>{const done=()=>resolve();video.addEventListener("seeked",done,{once:true});video.currentTime=time;setTimeout(()=>reject(new Error("Video seek timed out")),5000);});}
+function tnReadFrame(video,w,h){const c=document.createElement("canvas");c.width=w;c.height=h;const g=c.getContext("2d",{willReadFrequently:true});g.drawImage(video,0,0,w,h);return g.getImageData(0,0,w,h).data;}
+function tnMedianBackground(frames,pixels){const med=new Uint8Array(pixels*3);for(let p=0;p<pixels;p++){for(let ch=0;ch<3;ch++){const vals=frames.map(f=>f[p*4+ch]).sort((a,b)=>a-b);med[p*3+ch]=vals[Math.floor(vals.length/2)];}}return med;}
+$("runTracknetBtn").addEventListener("click",async()=>{
+  if(!tn.session||!tnVideoReady()||tn.busy)return;
+  tn.busy=true;$("runTracknetBtn").disabled=true;tn.points=[];const v=$("tracknetVideoPreview"),started=performance.now();
+  try{
+    const name=tn.session.inputNames[0],meta=tn.session.inputMetadata?.[name],dims=meta?.dimensions||[];
+    let H=Number(dims.at(-2)),W=Number(dims.at(-1));if(!Number.isFinite(H)||H<=0)H=288;if(!Number.isFinite(W)||W<=0)W=512;
+    if(H*W>1024*1024)throw new Error(`Model spatial input ${W}×${H} is too large for this first phone test.`);
+    const count=8,span=Math.min(v.duration,Math.max(1,v.duration));
+    const times=Array.from({length:count},(_,i)=>Math.min(Math.max(0,span-0.04),i*span/count));
+    const frames=[];for(let i=0;i<count;i++){await tnFrameAt(v,times[i]);frames.push(tnReadFrame(v,W,H));}
+    const pixels=W*H,median=tnMedianBackground(frames,pixels),inputData=new Float32Array(32*pixels);
+    // TrackNetV3 channel order: RGB median background followed by 8 RGB frames; 5 zero channels pad to 32.
+    for(let p=0;p<pixels;p++)for(let ch=0;ch<3;ch++)inputData[ch*pixels+p]=median[p*3+ch]/255;
+    for(let f=0;f<count;f++)for(let ch=0;ch<3;ch++)for(let p=0;p<pixels;p++)inputData[(3+f*3+ch)*pixels+p]=frames[f][p*4+ch]/255;
+    const tensor=new tn.ort.Tensor("float32",inputData,[1,32,H,W]);
+    const result=await tn.session.run({[name]:tensor}),out=result[tn.session.outputNames[0]];
+    const od=out.dims,channels=Number(od[1])||8,oh=Number(od.at(-2)),ow=Number(od.at(-1)),data=out.data;
+    if(!oh||!ow||channels<1)throw new Error("Unexpected TrackNet output shape: "+JSON.stringify(od));
+    for(let ch=0;ch<Math.min(8,channels);ch++){
+      let best=-Infinity,bestI=-1;const offset=ch*oh*ow;
+      for(let i=0;i<oh*ow;i++){const value=Number(data[offset+i]);if(value>best){best=value;bestI=i;}}
+      if(bestI>=0&&Number.isFinite(best)){const x=(bestI%ow)/Math.max(1,ow-1),y=Math.floor(bestI/ow)/Math.max(1,oh-1);tn.points.push({x,y,score:best,t:times[ch]});}
+    }
+    $("tracknetFrames").textContent=String(count);$("tracknetPoints").textContent=String(tn.points.length);$("tracknetRuntime").textContent=((performance.now()-started)/1000).toFixed(2)+" s";
+    tnDraw(tn.points);tnStatus(`TrackNetV3 inference completed on ${count} sampled frames (${W}×${H} input). ${tn.points.length} heatmap peak candidates produced. Peak values are raw model scores, not calibrated probabilities. This first pass uses an 8-frame sampled median approximation; verify preprocessing and compare points against the original footage before trusting the trajectory.`);
+  }catch(err){console.error(err);tnStatus("Inference failed: "+(err?.message||err)+". The existing Stage 9 synthetic demo remains unchanged.");}
+  finally{tn.busy=false;$("runTracknetBtn").disabled=!tn.session||!tnVideoReady();}
+});
+$("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFrames").textContent="0";$("tracknetPoints").textContent="0";$("tracknetRuntime").textContent="—";tnDraw();tnStatus("Cleared detector results. Model remains loaded.");});
 
 </script>
 </body>
