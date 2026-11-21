@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#101820">
-<title>Badminton AI Coach</title>
+<title>Badminton AI Coach | Ready to Test</title>
 <style>
 :root{color-scheme:dark;--bg:#101820;--panel:#182630;--muted:#9fb0bb;--accent:#63e6be;--line:#30434f}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f4f7f8;font:15px system-ui,-apple-system,Segoe UI,sans-serif}
@@ -133,6 +133,8 @@ header{position:sticky;top:0;z-index:30;background:#101b23eF;backdrop-filter:blu
 #advancedToggle{width:100%;text-align:left}
 .qs-field{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
 .qs-field select{min-width:180px}
+#cameraZoomControls input{accent-color:#63e6be}
+#cameraZoomControls button{padding:7px 11px;font-size:12px}
 @media(max-width:650px){#quickStart,#liveWorkspace,#advancedArea{padding-left:10px;padding-right:10px}#liveWorkspace #stage{min-height:220px;aspect-ratio:4/3}.qs-title{font-size:18px}}
 </style>
 
@@ -262,6 +264,16 @@ header{position:sticky;top:0;z-index:30;background:#101b23eF;backdrop-filter:blu
       <video id="video" playsinline muted></video>
       <canvas id="overlay" aria-label="Live pose tracking. Tap a player to select."></canvas><div id="courtCalOverlay" class="court-cal-overlay" hidden><strong>COURT CALIBRATION</strong><span>Tap 4 court corners: far-left → far-right → near-right → near-left</span><small id="courtCalOverlayStep">Ready for corner 1 of 4</small></div>
       <div id="selfieMonitor" aria-label="Front camera self preview"><button type="button" class="selfieClose" id="closeSelfie" title="Hide selfie preview">×</button><video id="selfieVideo" playsinline muted></video><div class="selfieTag"><span>SELF VIEW</span><span id="selfieStatus">Starting…</span></div></div>
+    </div>
+    <div id="cameraZoomControls" class="panel" style="margin-top:10px;padding:10px 12px;background:#13232c">
+      <div class="toolbar" style="justify-content:space-between">
+        <strong>Camera zoom</strong><strong id="cameraZoomValue">1.0×</strong>
+      </div>
+      <input id="cameraZoomSlider" type="range" min="0.6" max="1.5" step="0.1" value="1" style="width:100%;margin:10px 0" disabled>
+      <div class="toolbar" style="justify-content:space-between">
+        <span class="note">0.6× wide</span><button id="cameraZoomReset" type="button" disabled>Reset 1.0×</button><span class="note">1.5× zoom</span>
+      </div>
+      <div class="note" id="cameraZoomStatus">Connect the rear camera to check supported zoom.</div>
     </div>
     <div class="toolbar" style="justify-content:space-between;margin-top:10px">
       <span class="note">P labels are temporary IDs · Tap your skeleton to select yourself</span>
@@ -536,7 +548,7 @@ import { PoseLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdel
 const $ = id => document.getElementById(id);
 const video=$("video"), canvas=$("overlay"), ctx=canvas.getContext("2d");
 let stream=null, landmarker=null, running=false, sessionStart=0, timer=null, lastVideoTime=-1;
-let replayFrames=[], lastReplayCapture=0, replayTimer=null, replayIndex=0;
+let replayFrames=[], lastReplayCapture=0, replayTimer=null, replayIndex=0, liveTrail=[];
 let frameTimes=[], movementTotal=0, records=[], processing=false, rafId=null;
 let tracks=[], nextId=1, selectedId=null, selectedLastHip=null, selectedSamples=0;
 let calibrationMode=false, courtCorners=[], courtHomography=null, lastCourtPoint=null;
@@ -766,6 +778,12 @@ function drawCourt(){
 }
 function drawAll(){
   ctx.clearRect(0,0,canvas.width,canvas.height);drawCourt();
+  // Short live movement trail for the selected player (hip-centre path).
+  if(liveTrail.length>1){
+    ctx.save();ctx.beginPath();
+    liveTrail.forEach((p,i)=>{const x=p.x*canvas.width,y=p.y*canvas.height;i?ctx.lineTo(x,y):ctx.moveTo(x,y);});
+    ctx.strokeStyle="#63e6be";ctx.lineWidth=4;ctx.lineCap="round";ctx.lineJoin="round";ctx.stroke();ctx.restore();
+  }
   const drawer=new DrawingUtils(ctx);
   for(const t of activeTracks()){
     const chosen=t.id===selectedId;
@@ -946,6 +964,7 @@ function processSelectedPlayer(now){
   if(!chosen)return;
   selectedSamples++;
   const hip=chosen.hip;
+  liveTrail.push({x:hip.x,y:hip.y});if(liveTrail.length>45)liveTrail.shift();
   if(selectedLastHip){
     const d=Math.hypot(hip.x-selectedLastHip.x,hip.y-selectedLastHip.y);
     if(d<.12)movementTotal+=d;
@@ -998,7 +1017,7 @@ $("startBtn").addEventListener("click",()=>{
   if(!landmarker)return;
   running=true;sessionStart=performance.now();lastVideoTime=-1;tracks=[];nextId=1;
   lastSessionDuration=0;dashboardPreview=false;recommendationPreview=false;
-  movementTotal=0;selectedLastHip=null;selectedSamples=0;records=[];frameTimes=[];replayFrames=[];lastReplayCapture=0;
+  movementTotal=0;selectedLastHip=null;selectedSamples=0;records=[];frameTimes=[];replayFrames=[];lastReplayCapture=0;liveTrail=[];
   footworkSamples=[];lastFootworkSampleAt=0;footworkIsDemo=false;renderFootwork();
   previousBaseDistance=null;recoveryReturns=0;recoveryTowards=0;recoveryAway=0;
   $("recoveryDistance").textContent="—";$("recoveryTrend").textContent="—";$("recoveryReturns").textContent="0";$("recoveryProximity").textContent="—";
@@ -1014,17 +1033,67 @@ function drawReplayFrame(index){
   const c=$('replayCourt');if(!c||!replayFrames.length)return;
   const g=c.getContext('2d'),frame=replayFrames[Math.max(0,Math.min(index,replayFrames.length-1))];
   g.clearRect(0,0,c.width,c.height);g.fillStyle='#17624d';g.fillRect(0,0,c.width,c.height);
-  g.strokeStyle='#e7fff3';g.lineWidth=3;g.strokeRect(75,35,450,690);
-  g.beginPath();g.moveTo(75,380);g.lineTo(525,380);g.moveTo(300,35);g.lineTo(300,725);g.moveTo(105,35);g.lineTo(105,725);g.moveTo(495,35);g.lineTo(495,725);g.stroke();
+  // Landscape court: rotate the court view 90 degrees while preserving the recorded coordinates.
+  // Court length runs left-to-right; court width runs top-to-bottom.
+  const left=55,top=48,courtW=690,courtH=314,midX=left+courtW/2;
+  g.strokeStyle='#e7fff3';g.lineWidth=3;g.strokeRect(left,top,courtW,courtH);
+  g.beginPath();
+  g.moveTo(midX,top);g.lineTo(midX,top+courtH); // net
+  g.moveTo(left,top+courtH/2);g.lineTo(left+courtW,top+courtH/2);
+  g.moveTo(left+courtW*.28,top);g.lineTo(left+courtW*.28,top+courtH);
+  g.moveTo(left+courtW*.72,top);g.lineTo(left+courtW*.72,top+courtH);
+  g.stroke();
   const colors=['#63b3ff','#ff8fa3','#ffc45c','#62e6bd'];
-  for(const p of frame.players){const x=75+p.x*450,y=35+p.y*690;g.fillStyle=colors[(p.id-1)%4];g.beginPath();g.arc(x,y,13,0,Math.PI*2);g.fill();g.lineWidth=p.selected?5:2;g.strokeStyle=p.selected?'#ffffff':'rgba(255,255,255,.65)';g.stroke();g.fillStyle='#fff';g.font='bold 18px system-ui';g.fillText('P'+p.id+(p.selected?' YOU':''),x+17,y-12);}
-  g.fillStyle='#fff';g.font='14px system-ui';g.fillText('Replay '+fmt(frame.t),18,22);
-  $('replaySeek').value=String(index);$('replaySummary').textContent='Duration '+fmt(frame.t)+' · '+replayFrames.length+' sampled moments · '+frame.players.length+' players visible';
+  for(const p of frame.players){
+    const x=left+p.y*courtW,y=top+p.x*courtH;
+    g.fillStyle=colors[(p.id-1)%4];g.beginPath();g.arc(x,y,11,0,Math.PI*2);g.fill();
+    g.lineWidth=p.selected?4:2;g.strokeStyle=p.selected?'#ffffff':'rgba(255,255,255,.65)';g.stroke();
+    g.fillStyle='#fff';g.font='bold 15px system-ui';g.fillText('P'+p.id+(p.selected?' YOU':''),x+13,y-9);
+  }
+  g.fillStyle='#fff';g.font='13px system-ui';g.fillText('Replay '+fmt(frame.t),12,22);
+  g.fillText('FAR END',left+8,top-12);g.fillText('NEAR END',left+courtW-80,top-12);
+  $('replaySeek').value=String(index);$('replaySummary').textContent='Duration '+fmt(frame.t)+' · '+replayFrames.length+' sampled moments · '+frame.players.length+' players visible · landscape court view';
+}
+
+function analyseCapturedMatch(){
+  const box=$('matchAnalysisResult');
+  if(!box)return;
+  const selected=replayFrames.filter(f=>f.players.some(p=>p.selected));
+  const selectedPts=selected.map(f=>f.players.find(p=>p.selected)).filter(Boolean);
+  const zoneSet=new Set();
+  selectedPts.forEach(p=>zoneSet.add(Math.min(5,Math.floor(p.y*6))+':'+Math.min(2,Math.floor(p.x*3))));
+  let path=0;
+  for(let i=1;i<selectedPts.length;i++){
+    const d=Math.hypot(selectedPts[i].x-selectedPts[i-1].x,selectedPts[i].y-selectedPts[i-1].y);
+    if(d<0.25)path+=d;
+  }
+  const first=selectedPts[0],last=selectedPts[selectedPts.length-1];
+  const sideChanges=selectedPts.reduce((n,p,i)=>n+(i>0 && ((p.y<.5)!==(selectedPts[i-1].y<.5))?1:0),0);
+  const coverage=zoneSet.size;
+  const mins=(lastSessionDuration/60).toFixed(1);
+  const fmtN=n=>Number(n).toFixed(2);
+  box.innerHTML = selectedPts.length ? `
+   <div class="toolbar" style="gap:10px;margin-bottom:10px">
+    <span class="status">SESSION ${fmt(lastSessionDuration)}</span>
+    <span class="status">${replayFrames.length.toLocaleString()} replay samples</span>
+    <span class="status">${selectedPts.length.toLocaleString()} selected-player samples</span>
+   </div>
+   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px">
+    <div class="panel"><div class="note">Court zones visited</div><strong>${coverage} / 18</strong></div>
+    <div class="panel"><div class="note">Movement path proxy</div><strong>${fmtN(path)} map units</strong></div>
+    <div class="panel"><div class="note">Half-court transitions</div><strong>${sideChanges}</strong></div>
+    <div class="panel"><div class="note">Replay duration</div><strong>${mins} min</strong></div>
+   </div>
+   <p><strong>What this suggests:</strong> The selected player's tracked hip position covered ${coverage} of 18 mapped zones during the captured session. The movement path and half-court transitions are position-based indicators only.</p>
+   <p><strong>Not analysed yet:</strong> shuttle trajectory, shot type, rally outcome, smash speed, foot contact/steps, and tactical quality. These require validated shuttle detection and additional badminton-specific analysis.</p>
+   <p class="note">This is an initial movement summary, not a validated coaching score. Missed detections, player-ID switches, camera angle and calibration can affect the results.</p>
+  ` : '<p>No selected-player samples were captured. Check that your player stayed visible and selected during recording.</p>';
 }
 function showReplay(){
   const panel=$('matchReplayPanel');if(!panel)return;panel.hidden=false;
   if(!replayFrames.length){$('replaySummary').textContent='No player-position samples captured. Try a longer session with visible players.';return;}
   $('replaySeek').max=String(replayFrames.length-1);replayIndex=0;drawReplayFrame(0);
+  $('analyseMatchBtn').onclick=analyseCapturedMatch;
   $('exportReplay').onclick=()=>{const payload={format:'Badminton AI Coach position replay',version:1,duration_seconds:lastSessionDuration,frames:replayFrames};const url=URL.createObjectURL(new Blob([JSON.stringify(payload)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='badminton-match-replay.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
   $('replaySeek').oninput=e=>{replayIndex=Number(e.target.value);drawReplayFrame(replayIndex);};
   $('replayPlay').onclick=()=>{if(replayTimer)clearInterval(replayTimer);$('replayPlay').disabled=true;$('replayPause').disabled=false;replayTimer=setInterval(()=>{replayIndex++;if(replayIndex>=replayFrames.length){clearInterval(replayTimer);replayTimer=null;$('replayPlay').disabled=false;$('replayPause').disabled=true;replayIndex=0;}drawReplayFrame(replayIndex);},200);};
@@ -1404,6 +1473,44 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
  function stopSelfiePreview(){if(selfieStream){selfieStream.getTracks().forEach(t=>t.stop());selfieStream=null;} $('selfieVideo').srcObject=null;$('selfieMonitor').style.display='none';}
  $('closeSelfie').addEventListener('click',()=>{selfieDismissed=true;stopSelfiePreview();});
  const cameraPanel=$('stage')?.closest('.panel');
+ const zoomSlider=$('cameraZoomSlider'),zoomValue=$('cameraZoomValue'),zoomStatus=$('cameraZoomStatus'),zoomReset=$('cameraZoomReset');
+ let zoomMin=.6,zoomMax=1.5,zoomSupported=false;
+ function syncCameraZoom(){
+   const track=stream?.getVideoTracks?.()[0];
+   if(!track){zoomStatus.textContent='Connect the rear camera to check supported zoom.';zoomSlider.disabled=true;zoomReset.disabled=true;return;}
+   const caps=track.getCapabilities?.()||{},range=caps.zoom;
+   if(range){
+     zoomSupported=true;zoomMin=Math.max(.6,Number(range.min??.6));zoomMax=Math.min(1.5,Number(range.max??1.5));
+     if(zoomMin>zoomMax){zoomSupported=false;}
+   }else{zoomSupported=false;}
+   if(zoomSupported){
+     zoomSlider.min=String(zoomMin);zoomSlider.max=String(zoomMax);zoomSlider.step='0.1';
+     const current=Number(track.getSettings?.().zoom||1);
+     zoomSlider.value=String(Math.min(zoomMax,Math.max(zoomMin,current)));
+     zoomValue.textContent=Number(zoomSlider.value).toFixed(1)+'×';
+     zoomSlider.disabled=zoomMax<=zoomMin;zoomReset.disabled=zoomSlider.disabled;
+     zoomStatus.textContent=`Hardware zoom available: ${zoomMin.toFixed(1)}×–${zoomMax.toFixed(1)}×. Your phone/browser determines the actual range.`;
+   }else{
+     zoomSlider.min='0.6';zoomSlider.max='1.5';zoomSlider.value='1';zoomSlider.disabled=true;zoomReset.disabled=true;
+     zoomValue.textContent='1.0×';
+     zoomStatus.textContent='This browser has not exposed adjustable rear-camera zoom. The control is unavailable rather than applying a misleading preview-only zoom.';
+   }
+ }
+ async function setCameraZoom(value){
+   const track=stream?.getVideoTracks?.()[0];if(!track||!zoomSupported)return;
+   const v=Math.min(zoomMax,Math.max(zoomMin,Number(value)));
+   try{
+     await track.applyConstraints({advanced:[{zoom:v}]});
+     zoomSlider.value=String(v);zoomValue.textContent=v.toFixed(1)+'×';
+     zoomStatus.textContent=`Rear camera zoom set to ${v.toFixed(1)}×.`;
+   }catch(err){
+     zoomStatus.textContent='The camera rejected this zoom level. Try another supported value.';
+   }
+ }
+ zoomSlider.addEventListener('input',e=>setCameraZoom(e.target.value));
+ zoomReset.addEventListener('click',()=>setCameraZoom(1));
+ video.addEventListener('loadedmetadata',()=>setTimeout(syncCameraZoom,150),{passive:true});
+
  const monitor=document.createElement('section');monitor.id='courtMonitor';monitor.innerHTML='<div><div class="cm-title">COURT DETECTION MONITOR</div><div class="cm-sub" id="cmStatus">Waiting for rear camera…</div></div><div class="cm-count" id="cmCount">0 / 4</div><div class="cm-players" id="cmPlayers"><span class="cm-player missing">P1 · Waiting</span><span class="cm-player missing">P2 · Waiting</span><span class="cm-player missing">P3 · Waiting</span><span class="cm-player missing">P4 · Waiting</span></div><div class="cm-tip">Silent visual feedback · Tap a detected player marker or player button below to select yourself.</div>';
  live.appendChild(monitor);
  const playersPanel=$('players')?.closest('.panel');
@@ -1418,7 +1525,16 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
  const record=document.createElement('section');record.className='panel';record.innerHTML='<div id="recordBar"><div><strong style="font-size:17px">Match recording</strong><div class="note" id="recordState">Camera and player selection required before recording.</div></div><div class="toolbar"><span class="metric"><span class="label">TIME</span><span class="value" id="quickTimer">00:00</span></span><button id="recordStart" class="primary" disabled>● START RECORDING</button><button id="recordStop" disabled>STOP</button></div></div><div class="note" style="margin-top:10px">Player IDs are temporary tracking IDs. If players cross or overlap, check the selected player again.</div>';
  live.appendChild(record);
  const replay=document.createElement('section');replay.className='panel';replay.id='matchReplayPanel';replay.hidden=true;
- replay.innerHTML='<div class="toolbar" style="justify-content:space-between"><div><strong style="font-size:18px">Match Replay</strong><div class="note" id="replaySummary">Processing recorded player positions…</div></div><button id="exportReplay">Export replay JSON</button></div><div style="max-width:620px;margin:12px auto;background:#123f35;border:2px solid #a9d7c5;border-radius:12px;padding:12px"><canvas id="replayCourt" width="600" height="760" style="display:block;width:100%;height:auto"></canvas></div><input id="replaySeek" type="range" min="0" max="0" value="0" step="1" style="width:100%"><div class="toolbar" style="justify-content:center"><button id="replayPlay">▶ Play replay</button><button id="replayPause" disabled>Ⅱ Pause</button></div><div class="note">Reconstructed from detected player positions, not camera footage. Missed detections and temporary ID switches may appear.</div>';
+ replay.innerHTML='<div class="toolbar" style="justify-content:space-between"><div><strong style="font-size:18px">Match Replay</strong><div class="note" id="replaySummary">Processing recorded player positions…</div></div><button id="exportReplay">Export replay JSON</button></div><div style="max-width:820px;margin:12px auto;background:#123f35;border:2px solid #a9d7c5;border-radius:12px;padding:12px"><canvas id="replayCourt" width="800" height="400" style="display:block;width:100%;height:auto"></canvas></div><input id="replaySeek" type="range" min="0" max="0" value="0" step="1" style="width:100%"><div class="toolbar" style="justify-content:center"><button id="replayPlay">▶ Play replay</button><button id="replayPause" disabled>Ⅱ Pause</button></div><div class="note">Reconstructed from detected player positions, not camera footage. Missed detections and temporary ID switches may appear.</div>';
+ replay.insertAdjacentHTML('beforeend',`
+ <div class="panel" style="margin-top:14px;background:#13232c">
+  <div class="toolbar" style="justify-content:space-between">
+   <div><strong style="font-size:18px">Match Analysis</strong><div class="note">Analyses the player-position data captured in this session.</div></div>
+   <button class="primary" id="analyseMatchBtn">Analyse My Match</button>
+  </div>
+  <div id="matchAnalysisResult" class="note" style="margin-top:12px">Stop recording to unlock your session analysis.</div>
+ </div>`);
+
  live.appendChild(replay);
  // Put the live camera and detected players before recording controls.
  const quickMode=$('quickGameMode'),oldMode=$('mode'),quality=$('quality');
