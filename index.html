@@ -536,6 +536,7 @@ import { PoseLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdel
 const $ = id => document.getElementById(id);
 const video=$("video"), canvas=$("overlay"), ctx=canvas.getContext("2d");
 let stream=null, landmarker=null, running=false, sessionStart=0, timer=null, lastVideoTime=-1;
+let replayFrames=[], lastReplayCapture=0, replayTimer=null, replayIndex=0;
 let frameTimes=[], movementTotal=0, records=[], processing=false, rafId=null;
 let tracks=[], nextId=1, selectedId=null, selectedLastHip=null, selectedSamples=0;
 let calibrationMode=false, courtCorners=[], courtHomography=null, lastCourtPoint=null;
@@ -978,6 +979,11 @@ function processFrame(now){
       const maxPlayers=$("mode").value==="singles"?2:4;
       updateTracks(detections.slice(0,maxPlayers));
       drawAll();renderPlayers();processSelectedPlayer(now);
+      if(now-lastReplayCapture>=200){
+        const snapshot=activeTracks().map(t=>({id:t.id,x:Number(t.hip.x.toFixed(4)),y:Number(t.hip.y.toFixed(4)),selected:t.id===selectedId}));
+        replayFrames.push({t:Number(((now-sessionStart)/1000).toFixed(2)),players:snapshot});
+        lastReplayCapture=now;
+      }
       frameTimes.push(now);if(frameTimes.length>20)frameTimes.shift();
       if(frameTimes.length>1){
         const fps=1000*(frameTimes.length-1)/(frameTimes.at(-1)-frameTimes[0]);
@@ -992,7 +998,7 @@ $("startBtn").addEventListener("click",()=>{
   if(!landmarker)return;
   running=true;sessionStart=performance.now();lastVideoTime=-1;tracks=[];nextId=1;
   lastSessionDuration=0;dashboardPreview=false;recommendationPreview=false;
-  movementTotal=0;selectedLastHip=null;selectedSamples=0;records=[];frameTimes=[];
+  movementTotal=0;selectedLastHip=null;selectedSamples=0;records=[];frameTimes=[];replayFrames=[];lastReplayCapture=0;
   footworkSamples=[];lastFootworkSampleAt=0;footworkIsDemo=false;renderFootwork();
   previousBaseDistance=null;recoveryReturns=0;recoveryTowards=0;recoveryAway=0;
   $("recoveryDistance").textContent="—";$("recoveryTrend").textContent="—";$("recoveryReturns").textContent="0";$("recoveryProximity").textContent="—";
@@ -1004,6 +1010,27 @@ $("startBtn").addEventListener("click",()=>{
   timer=setInterval(()=>$("time").textContent=fmt((performance.now()-sessionStart)/1000),250);
   rafId=requestAnimationFrame(processFrame);
 });
+function drawReplayFrame(index){
+  const c=$('replayCourt');if(!c||!replayFrames.length)return;
+  const g=c.getContext('2d'),frame=replayFrames[Math.max(0,Math.min(index,replayFrames.length-1))];
+  g.clearRect(0,0,c.width,c.height);g.fillStyle='#17624d';g.fillRect(0,0,c.width,c.height);
+  g.strokeStyle='#e7fff3';g.lineWidth=3;g.strokeRect(75,35,450,690);
+  g.beginPath();g.moveTo(75,380);g.lineTo(525,380);g.moveTo(300,35);g.lineTo(300,725);g.moveTo(105,35);g.lineTo(105,725);g.moveTo(495,35);g.lineTo(495,725);g.stroke();
+  const colors=['#63b3ff','#ff8fa3','#ffc45c','#62e6bd'];
+  for(const p of frame.players){const x=75+p.x*450,y=35+p.y*690;g.fillStyle=colors[(p.id-1)%4];g.beginPath();g.arc(x,y,13,0,Math.PI*2);g.fill();g.lineWidth=p.selected?5:2;g.strokeStyle=p.selected?'#ffffff':'rgba(255,255,255,.65)';g.stroke();g.fillStyle='#fff';g.font='bold 18px system-ui';g.fillText('P'+p.id+(p.selected?' YOU':''),x+17,y-12);}
+  g.fillStyle='#fff';g.font='14px system-ui';g.fillText('Replay '+fmt(frame.t),18,22);
+  $('replaySeek').value=String(index);$('replaySummary').textContent='Duration '+fmt(frame.t)+' · '+replayFrames.length+' sampled moments · '+frame.players.length+' players visible';
+}
+function showReplay(){
+  const panel=$('matchReplayPanel');if(!panel)return;panel.hidden=false;
+  if(!replayFrames.length){$('replaySummary').textContent='No player-position samples captured. Try a longer session with visible players.';return;}
+  $('replaySeek').max=String(replayFrames.length-1);replayIndex=0;drawReplayFrame(0);
+  $('exportReplay').onclick=()=>{const payload={format:'Badminton AI Coach position replay',version:1,duration_seconds:lastSessionDuration,frames:replayFrames};const url=URL.createObjectURL(new Blob([JSON.stringify(payload)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='badminton-match-replay.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+  $('replaySeek').oninput=e=>{replayIndex=Number(e.target.value);drawReplayFrame(replayIndex);};
+  $('replayPlay').onclick=()=>{if(replayTimer)clearInterval(replayTimer);$('replayPlay').disabled=true;$('replayPause').disabled=false;replayTimer=setInterval(()=>{replayIndex++;if(replayIndex>=replayFrames.length){clearInterval(replayTimer);replayTimer=null;$('replayPlay').disabled=false;$('replayPause').disabled=true;replayIndex=0;}drawReplayFrame(replayIndex);},200);};
+  $('replayPause').onclick=()=>{if(replayTimer)clearInterval(replayTimer);replayTimer=null;$('replayPlay').disabled=false;$('replayPause').disabled=true;};
+  panel.scrollIntoView({behavior:'smooth',block:'start'});
+}
 function stopSession(){
   running=false;cancelAnimationFrame(rafId);clearInterval(timer);
   $("startBtn").disabled=!landmarker;$("stopBtn").disabled=true;
@@ -1013,6 +1040,7 @@ function stopSession(){
   $("time").textContent=fmt(secs);
   $("observation").textContent=`Session: ${fmt(secs)}. Selected-player samples: ${selectedSamples}. Movement index: ${(movementTotal*100).toFixed(1)}. These are preliminary tracking indicators, not a validated badminton performance score.`;
   renderDashboard();
+  showReplay();
 }
 $("stopBtn").addEventListener("click",stopSession);
 $("downloadBtn").addEventListener("click",()=>{
@@ -1389,6 +1417,9 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
  }
  const record=document.createElement('section');record.className='panel';record.innerHTML='<div id="recordBar"><div><strong style="font-size:17px">Match recording</strong><div class="note" id="recordState">Camera and player selection required before recording.</div></div><div class="toolbar"><span class="metric"><span class="label">TIME</span><span class="value" id="quickTimer">00:00</span></span><button id="recordStart" class="primary" disabled>● START RECORDING</button><button id="recordStop" disabled>STOP</button></div></div><div class="note" style="margin-top:10px">Player IDs are temporary tracking IDs. If players cross or overlap, check the selected player again.</div>';
  live.appendChild(record);
+ const replay=document.createElement('section');replay.className='panel';replay.id='matchReplayPanel';replay.hidden=true;
+ replay.innerHTML='<div class="toolbar" style="justify-content:space-between"><div><strong style="font-size:18px">Match Replay</strong><div class="note" id="replaySummary">Processing recorded player positions…</div></div><button id="exportReplay">Export replay JSON</button></div><div style="max-width:620px;margin:12px auto;background:#123f35;border:2px solid #a9d7c5;border-radius:12px;padding:12px"><canvas id="replayCourt" width="600" height="760" style="display:block;width:100%;height:auto"></canvas></div><input id="replaySeek" type="range" min="0" max="0" value="0" step="1" style="width:100%"><div class="toolbar" style="justify-content:center"><button id="replayPlay">▶ Play replay</button><button id="replayPause" disabled>Ⅱ Pause</button></div><div class="note">Reconstructed from detected player positions, not camera footage. Missed detections and temporary ID switches may appear.</div>';
+ live.appendChild(replay);
  // Put the live camera and detected players before recording controls.
  const quickMode=$('quickGameMode'),oldMode=$('mode'),quality=$('quality');
  quickMode.addEventListener('change',()=>{oldMode.value=quickMode.value;oldMode.dispatchEvent(new Event('change',{bubbles:true}));});
@@ -1427,7 +1458,7 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
    $('recordStop').disabled=!running;
    $('recordStart').classList.toggle('recording',running);
    $('recordStart').textContent=running?'● RECORDING':'● START RECORDING';
-   $('recordState').textContent=running?'Recording live movement data.':(!hasCamera?'Enable camera to begin.':(!selected?'Tap your player in the camera view or select a player below.':'Player selected. Ready to record.'));
+   $('recordState').textContent=running?'Recording player positions for a lightweight replay.':(!hasCamera?'Enable camera to begin.':(!selected?'Tap your player in the camera view or select a player below.':'Player selected. Ready to record.'));
    $('quickTimer').textContent=$('time')?.textContent||'00:00';
    if(hasCamera)$('quickHint').textContent='Camera is active. Tap your player in the video or choose the matching player ID below.';
  }
