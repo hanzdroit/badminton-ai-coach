@@ -31,6 +31,9 @@ button.primary{background:#087f61;border-color:#087f61}button:disabled{opacity:.
 ul{margin:8px 0 0;padding-left:18px;color:#d5e0e5;line-height:1.6}
 footer{color:var(--muted);font-size:11px;text-align:center;padding:8px 16px 22px}
 @media(max-width:620px){header{padding:13px}main{padding:10px}.metrics{grid-template-columns:repeat(2,1fr)}.metric .value{font-size:20px}.panel{padding:11px}}
+
+.court-cal-overlay{position:absolute;z-index:8;left:12px;right:12px;top:12px;padding:10px 12px;border:1px solid #f8df7a;border-radius:10px;background:rgba(12,24,30,.92);color:#fff;display:flex;flex-direction:column;gap:4px;pointer-events:none;font-size:13px;box-shadow:0 4px 18px rgba(0,0,0,.25)}
+.court-cal-overlay[hidden]{display:none!important}.court-cal-overlay strong{color:#f8df7a;font-size:12px;letter-spacing:.06em}.court-cal-overlay small{color:#bfe9dc}
 </style>
 
 <style>
@@ -257,7 +260,7 @@ header{position:sticky;top:0;z-index:30;background:#101b23eF;backdrop-filter:blu
     <div class="stage" id="stage">
       <div class="placeholder" id="placeholder">Allow camera access, then place your phone behind the baseline in landscape orientation. Keep the full court and players visible.</div>
       <video id="video" playsinline muted></video>
-      <canvas id="overlay" aria-label="Live pose tracking. Tap a player to select."></canvas>
+      <canvas id="overlay" aria-label="Live pose tracking. Tap a player to select."></canvas><div id="courtCalOverlay" class="court-cal-overlay" hidden><strong>COURT CALIBRATION</strong><span>Tap 4 court corners: far-left → far-right → near-right → near-left</span><small id="courtCalOverlayStep">Ready for corner 1 of 4</small></div>
       <div id="selfieMonitor" aria-label="Front camera self preview"><button type="button" class="selfieClose" id="closeSelfie" title="Hide selfie preview">×</button><video id="selfieVideo" playsinline muted></video><div class="selfieTag"><span>SELF VIEW</span><span id="selfieStatus">Starting…</span></div></div>
     </div>
     <div class="toolbar" style="justify-content:space-between;margin-top:10px">
@@ -635,7 +638,11 @@ function renderCoachHome(){
             :"Setup is ready. Start training to collect selected-player movement data; shuttle and rally labs remain simulations.";
 }
 $("coachCameraLink").addEventListener("click",()=>{$("stage").scrollIntoView({behavior:"smooth",block:"center"});});
-$("coachCalibrateLink").addEventListener("click",()=>{$("stage").scrollIntoView({behavior:"smooth",block:"center"});if(stream)$("calibrateBtn").click();});
+$("coachCalibrateLink").addEventListener("click",()=>{
+  const details=$("courtCalibrationPanel")?.closest("details");if(details)details.open=true;
+  if(!stream || !video.videoWidth){$("calibrationHelp").textContent="Enable the rear camera first. Once the live court preview appears, press Calibrate court again."; $("calibrationStatus").textContent="Camera required"; $("stage").scrollIntoView({behavior:"smooth",block:"center"}); return;}
+  $("calibrateBtn").click();
+});
 $("coachStartBtn").addEventListener("click",()=>{if(running)$("stopBtn").click();else $("startBtn").click();renderCoachHome();});
 renderCoachHome();
 function fmt(sec){return String(Math.floor(sec/60)).padStart(2,"0")+":"+String(Math.floor(sec%60)).padStart(2,"0")}
@@ -780,15 +787,31 @@ canvas.addEventListener("click",e=>{
     courtCorners.push(point);
     const names=["far-left","far-right","near-right","near-left"];
     $("calibrationHelp").textContent=courtCorners.length===4?"Check the yellow outline and pink halfway net line.":"Corner "+courtCorners.length+"/4 marked. Tap the "+names[courtCorners.length]+" corner next.";
-    if(courtCorners.length===4){courtHomography=buildHomography(courtCorners);calibrationMode=false;$("calibrateBtn").textContent="Recalibrate court";$("calibrationStatus").textContent=courtHomography?"4 corners marked":"Calibration failed";$("courtState").textContent=courtHomography?"Ready":"Error";$("calibrationHelp").textContent=courtHomography?"Court mapped. Keep the camera fixed; recalibrate if it moves.":"Could not map court. Clear and try again.";}
+    const step=$("courtCalOverlayStep");if(step)step.textContent=courtCorners.length===4?"Four corners marked · checking court mapping":"Corner "+courtCorners.length+" of 4 marked · next: "+names[courtCorners.length];
+    if(courtCorners.length===4){courtHomography=buildHomography(courtCorners);calibrationMode=false;$("calibrateBtn").textContent="Recalibrate court";$("calibrationStatus").textContent=courtHomography?"4 corners marked":"Calibration failed";$("courtState").textContent=courtHomography?"Ready":"Error";$("calibrationHelp").textContent=courtHomography?"Court mapped. Keep the camera fixed; recalibrate if it moves.":"Could not map court. Clear and try again.";if($("courtCalOverlay"))$("courtCalOverlay").hidden=true;}
     renderCoachHome();
     drawAll();return;
   }
   let best=null,bestDistance=.16;for(const t of activeTracks()){const d=Math.hypot(t.hip.x-point.x,t.hip.y-point.y);if(d<bestDistance){best=t;bestDistance=d;}}
   if(best)selectPlayer(best.id);
 });
-$("calibrateBtn").addEventListener("click",()=>{courtCorners=[];courtHomography=null;calibrationMode=true;lastCourtPoint=null;$("courtState").textContent="Marking";$("courtSide").textContent="—";$("courtZone").textContent="—";$("courtPosition").textContent="—";$("calibrationStatus").textContent="Mark 4 corners";$("calibrationHelp").textContent="Tap far-left, far-right, near-right, then near-left outer court corner.";drawAll();renderCoachHome();});
-$("clearCourtBtn").addEventListener("click",()=>{calibrationMode=false;courtCorners=[];courtHomography=null;lastCourtPoint=null;$("courtState").textContent="Off";$("courtSide").textContent="—";$("courtZone").textContent="—";$("courtPosition").textContent="—";$("calibrationStatus").textContent="Court not calibrated";$("calibrationHelp").textContent="Court calibration cleared.";drawAll();renderCoachHome();});
+$("calibrateBtn").addEventListener("click",()=>{ 
+  if(!stream || !video.videoWidth){
+    $("calibrationHelp").textContent="First enable the rear camera and wait until the live court image appears. Then press Calibrate court again.";
+    $("calibrationStatus").textContent="Camera required";
+    $("coachGuidance").textContent="Court calibration needs the rear-camera preview. Enable the camera first.";
+    $("stage").scrollIntoView({behavior:"smooth",block:"center"});
+    return;
+  }
+  courtCorners=[];courtHomography=null;calibrationMode=true;lastCourtPoint=null;
+  $("courtState").textContent="Marking";$("courtSide").textContent="—";$("courtZone").textContent="—";$("courtPosition").textContent="—";
+  $("calibrationStatus").textContent="Mark 4 corners";
+  $("calibrationHelp").textContent="Calibration active: tap the four OUTER court corners on the camera image in order: far-left, far-right, near-right, near-left.";
+  const banner=$("courtCalOverlay");if(banner){banner.hidden=false;$("courtCalOverlayStep").textContent="Ready for corner 1 of 4";}
+  $("stage").scrollIntoView({behavior:"smooth",block:"center"});
+  drawAll();renderCoachHome();
+});
+$("clearCourtBtn").addEventListener("click",()=>{calibrationMode=false;if($("courtCalOverlay"))$("courtCalOverlay").hidden=true;courtCorners=[];courtHomography=null;lastCourtPoint=null;$("courtState").textContent="Off";$("courtSide").textContent="—";$("courtZone").textContent="—";$("courtPosition").textContent="—";$("calibrationStatus").textContent="Court not calibrated";$("calibrationHelp").textContent="Court calibration cleared.";drawAll();renderCoachHome();});
 $("clearHeatBtn").addEventListener("click",()=>{heatCounts=Array(18).fill(0);saveHeatCounts();renderHeatmap();});
 $("demoHeatBtn").addEventListener("click",()=>{
   heatCounts=[4,8,3,7,15,6,5,12,4,3,7,4,2,5,3,1,2,1];saveHeatCounts();renderHeatmap();
@@ -1371,7 +1394,11 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
  quickMode.addEventListener('change',()=>{oldMode.value=quickMode.value;oldMode.dispatchEvent(new Event('change',{bubbles:true}));});
  $('quickQuality').addEventListener('change',e=>quality.value=e.target.value);
  $('quickCamera').addEventListener('click',()=>{$('cameraBtn').click();$('quickHint').textContent='Camera requested. Allow access. Watch the silent Court Detection Monitor for player status; no sound is required.';});
- $('quickCalibrate').addEventListener('click',()=>{$('calibrateBtn').click();$('calibrationSlot').scrollIntoView({behavior:'smooth',block:'center'});});
+ $('quickCalibrate').addEventListener('click',()=>{
+    const details=$('courtCalibrationPanel')?.closest('details');if(details)details.open=true;
+    $('calibrateBtn').click();
+    $('stage').scrollIntoView({behavior:'smooth',block:'center'});
+  });
  $('recordStart').addEventListener('click',()=>{$('startBtn').click();sync();});
  $('recordStop').addEventListener('click',()=>{$('stopBtn').click();sync();});
  $('showAdvancedTop').addEventListener('click',()=>{advanced.hidden=!advanced.hidden;if(!advanced.hidden)advanced.scrollIntoView({behavior:'smooth'});});
