@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#101820">
 <link rel="icon" href="data:,">
-<title>Badminton AI Coach — Stage 17.5 · Live & Video Analysis</title>
+<title>Badminton AI Coach — Stage 17.3.2 · Startup & Mobile Fix</title>
 <style>
 :root{color-scheme:dark;--bg:#101820;--panel:#182630;--muted:#9fb0bb;--accent:#63e6be;--line:#30434f}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f4f7f8;font:15px system-ui,-apple-system,Segoe UI,sans-serif}
@@ -61,19 +61,6 @@ footer{color:var(--muted);font-size:11px;text-align:center;padding:8px 16px 22px
 .canvas-player-slot{cursor:pointer}
 .canvas-player-slot.target{outline:2px solid #ffd166;outline-offset:1px}
 @media(max-width:620px){#playerIdentityPanel{left:6px;right:6px;bottom:6px;max-height:62%}#playerIdentityPanel .identity-grid{grid-template-columns:repeat(2,minmax(0,1fr))}#playerIdentityPanel summary{padding:7px 9px}}
-/* Stage 17.3.1: responsive player references below the camera, not over it */
-#playerIdentityPanel{position:static!important;inset:auto!important;z-index:auto!important;width:100%;max-height:none!important;overflow:visible!important;margin:0!important;background:#13232c!important;border-radius:14px}
-#playerIdentityPanel details{display:block!important;max-height:none!important}
-#playerIdentityPanel summary{padding:12px 14px!important;font-size:13px!important;min-height:46px}
-#playerIdentityContent{padding:0 12px 12px!important;overflow:visible!important}
-#playerIdentityPanel .identity-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important}
-#playerIdentityPanel .identity-card{padding:10px!important}
-#playerIdentityPanel .identity-card button{font-size:12px!important;padding:9px!important}
-#playerIdentityPanel .identity-explain{font-size:11px!important;line-height:1.45!important}
-@media(max-width:620px){#playerIdentityPanel .identity-grid{grid-template-columns:1fr!important}#playerIdentityPanel .identity-card{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:6px 10px}#playerIdentityPanel .identity-card label{grid-column:1/-1;margin:0}#playerIdentityPanel .identity-card input{grid-column:1/-1}#playerIdentityPanel .identity-card .note{margin:0;min-width:0}#playerIdentityPanel .identity-card button{grid-column:2;grid-row:3;width:auto;white-space:normal;max-width:150px}#playerIdentityPanel .identity-actions{display:grid;grid-template-columns:1fr}#playerIdentityPanel .identity-actions button{width:100%}}
-/* Keep detection chips compact and let the actual camera image dominate. */
-@media(max-width:600px){.canvas-detection-controls{left:6px;right:6px;top:6px;max-width:calc(100% - 12px)}.canvas-player-slots{gap:4px}.canvas-player-slot{font-size:9px;padding:4px}.stage{aspect-ratio:4/3}}
-
 
 </style>
 
@@ -174,15 +161,29 @@ header{position:sticky;top:0;z-index:30;background:#101b23eF;backdrop-filter:blu
 @media(max-width:650px){#quickStart,#liveWorkspace,#advancedArea{padding-left:10px;padding-right:10px}#liveWorkspace #stage{min-height:220px;aspect-ratio:4/3}.qs-title{font-size:18px}}
 </style>
 
+
+<style>
+/* Stage 17.3.2: stable, responsive player setup placement */
+#playerIdentityPanel{position:relative!important;z-index:1!important;left:auto!important;right:auto!important;bottom:auto!important;margin:0!important;max-height:none!important;overflow:visible!important;background:var(--panel)!important;backdrop-filter:none!important}
+#playerIdentityPanel details{display:block!important;max-height:none!important}
+#playerIdentityPanel details:not([open]) #playerIdentityContent{display:none}
+#playerIdentityPanel summary{padding:10px 12px!important;font-size:14px!important}
+#playerIdentityPanel .identity-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:9px!important}
+#playerIdentityPanel .identity-card{padding:10px!important}
+#playerIdentityPanel .identity-card button{font-size:12px!important;padding:9px!important}
+#playerIdentityPanel .identity-explain{font-size:11px!important}
+@media(max-width:620px){#playerIdentityPanel .identity-grid{grid-template-columns:1fr!important}#playerIdentityPanel .identity-card{display:grid;grid-template-columns:1fr;gap:5px}#playerIdentityPanel .identity-card input{font-size:16px;padding:10px}#playerIdentityPanel .identity-card button{width:100%;min-height:42px;font-size:13px}#playerIdentityPanel summary{font-size:13px!important}}
+</style>
+
 </head>
 <body>
 <header>
-  <div><h1>🏸 Badminton AI Coach</h1><div class="sub">Stage 17.3.1 · Detection overlays + mobile layout</div></div>
+  <div><h1>🏸 Badminton AI Coach</h1><div class="sub">Stage 17.1 · Person detection + pose tracking</div></div>
   <div class="status"><span id="liveDot" class="dot"></span><span id="statusText">Not connected</span></div>
 </header>
 <div id="quickStart">
  <div class="qs-card">
-  <div class="qs-head"><div><div class="qs-title">Ready for your game?</div><div class="qs-muted">Choose your session type and game format. Player slots will appear automatically on the camera.</div></div><span class="stage910Pill">STAGE 17.3.1 · LIVE MODE</span></div>
+  <div class="qs-head"><div><div class="qs-title">Ready for your game?</div><div class="qs-muted">Choose your session type and game format. Player slots will appear automatically on the camera.</div></div><span class="stage910Pill">STAGE 17.3.2 · LIVE MODE</span></div>
   <div class="qs-field"><label for="quickSessionType">Session type</label><select id="quickSessionType"><option value="training" selected>Training</option><option value="match">Match</option><option value="social">Social Game</option></select><label for="quickGameMode">Game format</label><select id="quickGameMode"><option value="singles">Singles · up to 2 players</option><option value="doubles" selected>Doubles · up to 4 players</option></select><label for="quickQuality">Processing</label><select id="quickQuality"><option value="640">Balanced</option><option value="480">Low</option><option value="960">Higher detail</option></select></div>
   <div class="qs-actions"><button id="quickCamera" class="primary">1 · Enable camera & detect players</button><button id="quickCalibrate">Calibrate court</button><button id="showAdvancedTop">Advanced / Demo tools</button></div>
   <div class="qs-muted" id="quickHint" style="margin-top:10px">Position your phone behind the baseline in landscape orientation. Keep all players and the full court visible.</div>
@@ -263,7 +264,7 @@ header{position:sticky;top:0;z-index:30;background:#101b23eF;backdrop-filter:blu
 <div id="advancedArea" hidden><button id="advancedToggle" type="button">Advanced / Demo tools · Show or hide</button><main id="advancedMain">
   <section class="panel" id="coachHome">
     <div class="toolbar" style="justify-content:space-between">
-      <div><h2>Stage 17.3.1 · Badminton AI Coach</h2><p class="note">Your session hub for camera setup, court mapping and movement analysis. Shuttle and rally labs are synthetic demonstrations.</p></div>
+      <div><h2>Stage 17.3.2 · Badminton AI Coach</h2><p class="note">Your session hub for camera setup, court mapping and movement analysis. Shuttle and rally labs are synthetic demonstrations.</p></div>
       <span class="stage910Pill" id="coachReadiness">SETUP NEEDED</span>
     </div>
     <div class="metrics">
@@ -694,16 +695,6 @@ function addHeatSample(pt){
   renderHeatmap();
 }
 const COLORS=["#63e6be","#ffcc66","#7db7ff","#ff8fa3"];
-// Shared identity labels are global because the camera renderer uses them outside the setup IIFE.
-const identityNames={1:"YOU",2:"P2",3:"P3",4:"P4"};
-let appearanceTrackMap={};
-function playerName(id){return identityNames[id]||("P"+id);}
-function identityLabelForTrack(t,index){
-  if(t.manualSlot)return "P"+t.manualSlot;
-  if(uploadedVideoMode)return "P"+(t.slot||index+1);
-  const found=Object.entries(appearanceTrackMap).find(([id,trackId])=>trackId===t.id);
-  return found?"P"+found[0]:"P"+(index+1);
-}
 const MAX_DISTANCE=.22, LOST_AFTER=12;
 
 function status(text,on=false){$("statusText").textContent=text;$("liveDot").classList.toggle("on",on);renderCoachHome()}
@@ -768,14 +759,14 @@ async function loadModel(){
     const detectorOptions={baseOptions:{modelAssetPath:"https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float32/1/efficientdet_lite0.tflite",delegate:"GPU"},runningMode:"VIDEO",scoreThreshold:.35,maxResults:10,categoryAllowlist:["person"]};
     try{personDetector=await ObjectDetector.createFromOptions(vision,detectorOptions);}
     catch(gpuDetectorError){console.warn("GPU person detector unavailable; trying CPU",gpuDetectorError);personDetector=await ObjectDetector.createFromOptions(vision,{...detectorOptions,baseOptions:{...detectorOptions.baseOptions,delegate:"CPU"}});}
-    $("fpsText").textContent="AI: person boxes + pose skeleton ready";
+    $("fpsText").textContent="AI: person + pose detectors ready";
   }catch(detectorError){
     console.error("Person detector failed to load",detectorError);
     $("fpsText").textContent="Person detector unavailable · pose fallback";
     const note=$("observation");if(note)note.textContent="Pose model is ready, but the separate person detector failed to load: "+(detectorError?.message||detectorError);
   }
   $("startBtn").disabled=false;
-  $("observation").textContent="Person detector and pose model loaded. Coloured person boxes should appear independently; pose skeleton lines appear when a body is recognised.";
+  $("observation").textContent="Person detection is running independently from pose detection. Bounding boxes should appear for people even when skeleton detection misses.";
   $("fpsText").textContent="AI: detecting players";
   renderCoachHome();
   if(!rafId)rafId=requestAnimationFrame(processFrame);
@@ -839,14 +830,12 @@ function renderPlayers(){
   box.innerHTML="";
   if(!active.length){box.textContent="No players detected yet.";}
   else{
-    active.forEach((t,index)=>{
-      const b=document.createElement("button");
-      b.type="button";
+    for(const t of active){
+      const b=document.createElement("span");
       b.className="player"+(t.id===selectedId?" selected":"");
-      b.textContent=identityLabelForTrack(t,index)+(t.landmarks?" · POSE":" · PERSON ONLY")+(t.id===selectedId?" · ANALYSING":"");
-      b.addEventListener("click",()=>selectPlayer(t.id));
+      b.textContent="P"+(t.manualSlot|| (uploadedVideoMode?(t.slot||index+1):t.id))+(t.landmarks?" · POSE":" · PERSON ONLY")+(t.id===selectedId?" · DEFAULT ANALYSIS":"");
       box.appendChild(b);
-    });
+    }
   }
   $("selection").textContent=selectedId===null
     ?"No player selected. P1 will be assigned automatically when a player is detected."
@@ -1825,20 +1814,21 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
  video.addEventListener('loadedmetadata',()=>setTimeout(syncCameraZoom,150),{passive:true});
 
  const identityPanel=document.createElement('section');identityPanel.id='playerIdentityPanel';identityPanel.className='panel';
- identityPanel.innerHTML=`<details id="identityDetails">
- <summary><span>OPTIONAL PLAYER REFERENCES</span><span class="note">Tap to expand</span></summary>
+ identityPanel.innerHTML=`<details id="identityDetails" open>
+ <summary><span>PLAYER IDENTIFICATION · PRE-MATCH SETUP</span><span class="note">Experimental appearance matching</span></summary>
  <div id="playerIdentityContent">
  <div class="identity-grid">
-  <div class="identity-card"><label for="identityName1">P1 · YOU</label><input id="identityName1" value="YOU" maxlength="24"><div class="note" id="identityRef1">Optional selfie reference · not required for detection</div><button id="captureSelfieRef" type="button">Capture optional YOU reference</button></div>
+  <div class="identity-card"><label for="identityName1">P1 · YOU</label><input id="identityName1" value="YOU" maxlength="24"><div class="note" id="identityRef1">Selfie reference not captured</div><button id="captureSelfieRef" type="button">Save YOU appearance</button></div>
   <div class="identity-card"><label for="identityName2">P2</label><input id="identityName2" value="P2" maxlength="24"><div class="note" id="identityRef2">No appearance reference</div><button class="captureFriend" data-player="2" type="button">Save P2 appearance</button></div>
   <div class="identity-card"><label for="identityName3">P3</label><input id="identityName3" value="P3" maxlength="24"><div class="note" id="identityRef3">No appearance reference</div><button class="captureFriend" data-player="3" type="button">Save P3 appearance</button></div>
   <div class="identity-card"><label for="identityName4">P4</label><input id="identityName4" value="P4" maxlength="24"><div class="note" id="identityRef4">No appearance reference</div><button class="captureFriend" data-player="4" type="button">Save P4 appearance</button></div>
  </div>
- <div class="identity-actions"><button id="identityRefresh" type="button">Refresh detected players</button><span class="note" id="identityStatus">This does not detect players. Use the live camera boxes and P1–P4 controls to identify players. Clothing matching is experimental.</span></div>
+ <div class="identity-actions"><button id="identityRefresh" type="button">Refresh detected players</button><span class="note" id="identityStatus">Save appearance references, then check the P1–P4 labels on the live camera. Matching is experimental.</span></div>
  <div id="selfieCaptureBox" hidden style="margin-top:8px"><video id="selfieCaptureVideo" autoplay playsinline muted style="width:100%;max-height:160px;object-fit:contain;background:#05090c;border-radius:8px"></video><div class="identity-actions"><button id="takeSelfieSnapshot" class="primary" type="button">Take selfie reference</button><button id="cancelSelfieSnapshot" type="button">Cancel</button></div></div>
- <div class="note identity-explain">Important: a selfie is only an optional appearance reference. It does not activate object detection or guarantee identity matching. The rear-camera person detector and pose model do the court tracking.</div>
+ <div class="note identity-explain">Appearance matching is experimental: the app compares clothing-colour features from each saved reference with detected player crops. It may confuse similar outfits or lose identity during crossings. Confirm all labels before recording.</div>
  </div></details>`;
- // Keep identity controls outside the camera frame; never obscure the live detection overlay.
+ // Mount briefly so existing event wiring can resolve its controls; it is moved below the camera before rendering.
+ const stageEl=$('stage');if(stageEl)stageEl.appendChild(identityPanel);
 
  // Experimental local appearance descriptor: coarse HSV clothing-colour histogram.
  // This is a lightweight heuristic, not a trained person-ReID neural network.
@@ -1881,9 +1871,17 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
    appearanceTrackMap=map;
    const statusEl=$('identityStatus');if(statusEl&&refs.length){const matched=Object.keys(map).length;statusEl.textContent='Appearance matching: '+matched+'/'+refs.length+' reference(s) matched. Check player labels; similar clothing can cause mismatches.';}
  }
- const identityRefs={}; const identityAppearance={}; let identitySelfieStream=null;
+ function identityLabelForTrack(t,index){
+   if(t.manualSlot)return "P"+t.manualSlot;
+   if(uploadedVideoMode)return "P"+(t.slot||index+1);
+   const found=Object.entries(appearanceTrackMap).find(([id,trackId])=>trackId===t.id);
+   return found?'P'+found[0]:'P'+(index+1);
+ }
+ const identityNames={1:'YOU',2:'P2',3:'P3',4:'P4'};
+ const identityRefs={}; const identityAppearance={}; let appearanceTrackMap={}; let identitySelfieStream=null;
  try{const saved=JSON.parse(localStorage.getItem('badmintonPlayerNamesV1')||'{}');for(let i=1;i<=4;i++)if(saved[i])identityNames[i]=saved[i];}catch(e){}
- for(let i=1;i<=4;i++){const input=$('identityName'+i);input.value=identityNames[i];input.addEventListener('input',()=>{identityNames[i]=input.value.trim()||('P'+i);try{localStorage.setItem('badmintonPlayerNamesV1',JSON.stringify(identityNames));}catch(e){};renderPlayers();drawAll();});}
+ function playerName(id){return identityNames[id]||('P'+id)}
+ for(let i=1;i<=4;i++){const input=identityPanel.querySelector('#identityName'+i);if(!input){console.warn('Player identity input missing:',i);continue;}input.value=identityNames[i];input.addEventListener('input',()=>{identityNames[i]=input.value.trim()||('P'+i);try{localStorage.setItem('badmintonPlayerNamesV1',JSON.stringify(identityNames));}catch(e){};renderPlayers();drawAll();});}
  $('captureSelfieRef').addEventListener('click',async()=>{
    try{
     if(!navigator.mediaDevices?.getUserMedia)throw new Error('Camera access requires HTTPS.');
@@ -1915,7 +1913,8 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
  live.appendChild(monitor);
  const playersPanel=$('players')?.closest('.panel');
  const calibration=$('courtCalibrationPanel');
-  if(cameraPanel){live.appendChild(cameraPanel);live.appendChild(identityPanel);}
+  if(cameraPanel)live.appendChild(cameraPanel);
+ live.appendChild(identityPanel);
 
  // Live player setup: choose YOU-only default or explicitly manage all four players.
  const setup=document.createElement('section');setup.className='panel';setup.id='livePlayerSetupPanel';
@@ -2014,7 +2013,7 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
  quickSessionType.addEventListener("change",()=>{currentSessionType=quickSessionType.value;});
  quickMode.addEventListener('change',()=>{oldMode.value=quickMode.value;oldMode.dispatchEvent(new Event('change',{bubbles:true}));sync();});
  $('quickQuality').addEventListener('change',e=>quality.value=e.target.value);
- $('quickCamera').addEventListener('click',()=>{$('cameraBtn').click();$('quickHint').textContent='Camera requested. Allow access. Person boxes and pose skeletons will appear when the models detect players. Wait for the P1–P4 markers before selecting YOU.';});
+ $('quickCamera').addEventListener('click',()=>{$('cameraBtn').click();$('quickHint').textContent='Camera requested. Allow access. Player detection will start automatically after the pose model loads; wait for P1–P4 to appear before selecting yourself.';});
  $('quickCalibrate').addEventListener('click',()=>{
     const details=$('courtCalibrationPanel')?.closest('details');if(details)details.open=true;
     $('calibrateBtn').click();
@@ -2028,7 +2027,7 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
  const originalRender=window.renderCoachHome; // status is also polled below.
  function sync(){
    const hasCamera=!!(document.getElementById('liveDot')?.classList.contains('on'));
-   const selected=selectedId!==null;
+   const selected=!!document.getElementById('selection')?.textContent.includes('Following temporary ID');
    const running=document.getElementById('stopBtn')?.disabled===false;
    const detected=$('players')?.querySelectorAll('.player').length||0;
    const maxPlayers=quickMode.value==='singles'?2:4;
@@ -2044,10 +2043,10 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
      cm.appendChild(chip);
    }
    const canvasSlots=$('canvasPlayerSlots');
-   if(canvasSlots){canvasSlots.innerHTML='';for(let i=1;i<=maxPlayers;i++){const present=!!liveTracks[i-1];const chip=document.createElement('button');chip.type='button';chip.className='canvas-player-slot '+(present?'':'missing');const slotTrack=liveTracks[i-1];const mappedId=slotTrack?Object.entries(appearanceTrackMap).find(([pid,tid])=>tid===slotTrack.id)?.[0]:null;chip.textContent=(mappedId?'P'+mappedId:'P'+i)+(present?' · Detected':' · Waiting');chip.title='Open P'+i+' player setup';chip.addEventListener('click',()=>{const details=$('identityDetails');if(details)details.open=true;$('identityName'+i)?.focus({preventScroll:true});$('playerIdentityPanel')?.scrollIntoView({block:'nearest',behavior:'smooth'});});canvasSlots.appendChild(chip);}}
+   if(canvasSlots){canvasSlots.innerHTML='';for(let i=1;i<=maxPlayers;i++){const present=!!liveTracks[i-1];const chip=document.createElement('button');chip.type='button';chip.className='canvas-player-slot '+(present?'':'missing');const mappedId=Object.entries(appearanceTrackMap).find(([pid,tid])=>tid===actual?.id)?.[0];chip.textContent=(mappedId?'P'+mappedId:'P'+i)+(present?' · Detected':' · Waiting');chip.title='Open P'+i+' player setup';chip.addEventListener('click',()=>{const details=$('identityDetails');if(details)details.open=true;$('identityName'+i)?.focus({preventScroll:true});$('playerIdentityPanel')?.scrollIntoView({block:'nearest',behavior:'smooth'});});canvasSlots.appendChild(chip);}}
    $('canvasDetectCount').textContent=liveTracks.length+' / '+maxPlayers+' detected';
 
-   if($('selfieMonitor') && $('selfieMonitor').style.display==='block' && $('selfieStatus'))$('selfieStatus').textContent=selected?'YOU SELECTED':detected+' DETECTED';
+   const selfieMonitor=$('selfieMonitor');if(selfieMonitor?.style.display==='block'&&$('selfieStatus'))$('selfieStatus').textContent=selected?'YOU SELECTED':'P'+detected+' DETECTED';
    $('recordStart').disabled=!hasCamera||detected===0||running;
    $('recordStop').disabled=!running;
    $('recordStart').classList.toggle('recording',running);
