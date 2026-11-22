@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#101820">
 <link rel="icon" href="data:,">
-<title>Badminton AI Coach — Stage 16.5 Match Library · Rear Camera</title>
+<title>Badminton AI Coach | Selfie Myself</title>
 <style>
 :root{color-scheme:dark;--bg:#101820;--panel:#182630;--muted:#9fb0bb;--accent:#63e6be;--line:#30434f}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f4f7f8;font:15px system-ui,-apple-system,Segoe UI,sans-serif}
@@ -35,6 +35,7 @@ footer{color:var(--muted);font-size:11px;text-align:center;padding:8px 16px 22px
 
 .court-cal-overlay{position:absolute;z-index:8;left:12px;right:12px;top:12px;padding:10px 12px;border:1px solid #f8df7a;border-radius:10px;background:rgba(12,24,30,.92);color:#fff;display:flex;flex-direction:column;gap:4px;pointer-events:none;font-size:13px;box-shadow:0 4px 18px rgba(0,0,0,.25)}
 .court-cal-overlay[hidden]{display:none!important}.court-cal-overlay strong{color:#f8df7a;font-size:12px;letter-spacing:.06em}.court-cal-overlay small{color:#bfe9dc}
+.identity-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.identity-card{background:#101b23;border:1px solid var(--line);border-radius:12px;padding:10px}.identity-card label{display:block;font-size:11px;color:var(--muted);margin-bottom:5px}.identity-card input{width:100%;min-width:0;background:#263b47;color:white;border:1px solid #45606e;border-radius:8px;padding:9px}.identity-card .note{margin-top:6px}.identity-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}@media(max-width:520px){.identity-grid{grid-template-columns:1fr}}
 </style>
 
 <style>
@@ -653,7 +654,7 @@ function status(text,on=false){$("statusText").textContent=text;$("liveDot").cla
 function renderCoachHome(){
   const cameraReady=!!stream&&!!landmarker,playerReady=selectedId!==null,courtReady=!!courtHomography,ready=cameraReady&&playerReady&&courtReady;
   $("coachCameraState").textContent=cameraReady?"Ready":(stream?"Pose model loading":"Not connected");
-  $("coachPlayerState").textContent=playerReady?"Player "+selectedId:"Not selected";
+  $("coachPlayerState").textContent=playerReady?playerName(selectedId):"Not selected";
   $("coachCourtState").textContent=courtReady?"Calibrated":"Not calibrated";
   $("coachSessionState").textContent=running?"Recording":(records.length?"Stopped":"Not started");
   $("coachReadiness").textContent=running?"SESSION LIVE":(ready?"READY TO TRAIN":"SETUP NEEDED");
@@ -758,14 +759,14 @@ function renderPlayers(){
     for(const t of active){
       const b=document.createElement("button");
       b.className="player"+(t.id===selectedId?" selected":"");
-      b.textContent="P"+t.id+(t.id===selectedId?" · YOU ✓":"");
+      b.textContent=playerName(t.id)+(t.id===selectedId?" · YOU ✓":"");
       b.addEventListener("click",()=>selectPlayer(t.id));
       box.appendChild(b);
     }
   }
   $("selection").textContent=selectedId===null
     ?"No player selected. Tap your skeleton when it appears."
-    :"Following temporary ID: Player "+selectedId+". If identity looks wrong after players cross, select yourself again.";
+    :"Following "+playerName(selectedId)+" (temporary track P"+selectedId+"). If players cross, confirm identity again.";
   renderCoachHome();
 }
 function selectPlayer(id){
@@ -824,7 +825,7 @@ function drawAll(){
     drawer.drawConnectors(t.landmarks,PoseLandmarker.POSE_CONNECTIONS,{color,lineWidth:chosen?5:3});
     drawer.drawLandmarks(t.landmarks,{color:"#fff",fillColor:color,lineWidth:1,radius:4});
     ctx.fillStyle=color;ctx.font="bold 22px system-ui";
-    ctx.fillText("P"+t.id+(t.id===selectedId?" · YOU":""),t.hip.x*canvas.width+10,t.hip.y*canvas.height-10);
+    ctx.fillText(playerName(t.id)+(t.id===selectedId?" · YOU":""),t.hip.x*canvas.width+10,t.hip.y*canvas.height-10);
   }
 }
 function canvasPointFromEvent(e){
@@ -1698,6 +1699,50 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
  zoomReset.addEventListener('click',()=>setCameraZoom(1));
  video.addEventListener('loadedmetadata',()=>setTimeout(syncCameraZoom,150),{passive:true});
 
+ const identityPanel=document.createElement('section');identityPanel.id='playerIdentityPanel';identityPanel.className='panel';
+ identityPanel.innerHTML=`<div class="toolbar" style="justify-content:space-between"><div><h2 style="margin:0">Player identification</h2><div class="note">Set names and capture appearance references before the match.</div></div><span class="stage910Pill">PRE-MATCH SETUP</span></div>
+ <div class="identity-grid" style="margin-top:12px">
+  <div class="identity-card"><label for="identityName1">YOU · P1</label><input id="identityName1" value="YOU" maxlength="24"><div class="note" id="identityRef1">No selfie reference captured</div><button id="captureSelfieRef" style="margin-top:8px;width:100%">Capture my selfie reference</button></div>
+  <div class="identity-card"><label for="identityName2">P2</label><input id="identityName2" value="P2" maxlength="24"><div class="note" id="identityRef2">No appearance reference captured</div><button class="captureFriend" data-player="2" style="margin-top:8px;width:100%">Capture P2 from court</button></div>
+  <div class="identity-card"><label for="identityName3">P3</label><input id="identityName3" value="P3" maxlength="24"><div class="note" id="identityRef3">No appearance reference captured</div><button class="captureFriend" data-player="3" style="margin-top:8px;width:100%">Capture P3 from court</button></div>
+  <div class="identity-card"><label for="identityName4">P4</label><input id="identityName4" value="P4" maxlength="24"><div class="note" id="identityRef4">No appearance reference captured</div><button class="captureFriend" data-player="4" style="margin-top:8px;width:100%">Capture P4 from court</button></div>
+ </div>
+ <div class="identity-actions"><button id="identityRefresh">Refresh detected players</button><span class="note" id="identityStatus">Capture your selfie before enabling the rear camera. Then capture friends from the court view.</span></div>
+ <div id="selfieCaptureBox" hidden style="margin-top:12px"><video id="selfieCaptureVideo" autoplay playsinline muted style="width:100%;max-height:260px;object-fit:contain;background:#05090c;border-radius:10px"></video><div class="identity-actions"><button id="takeSelfieSnapshot" class="primary">Take reference photo</button><button id="cancelSelfieSnapshot">Cancel</button></div></div>
+ <div class="note" style="margin-top:10px">Important: these are appearance reference captures for the next recognition milestone. This build does not yet automatically match clothing or faces to P1–P4. Confirm the player selection manually before recording. References are held in this page session and are not uploaded.</div>`;
+ live.appendChild(identityPanel);
+ const identityNames={1:'YOU',2:'P2',3:'P3',4:'P4'};
+ const identityRefs={}; let identitySelfieStream=null;
+ try{const saved=JSON.parse(localStorage.getItem('badmintonPlayerNamesV1')||'{}');for(let i=1;i<=4;i++)if(saved[i])identityNames[i]=saved[i];}catch(e){}
+ function playerName(id){return identityNames[id]||('P'+id)}
+ for(let i=1;i<=4;i++){const input=$('identityName'+i);input.value=identityNames[i];input.addEventListener('input',()=>{identityNames[i]=input.value.trim()||('P'+i);try{localStorage.setItem('badmintonPlayerNamesV1',JSON.stringify(identityNames));}catch(e){};renderPlayers();drawAll();});}
+ $('captureSelfieRef').addEventListener('click',async()=>{
+   try{
+    if(!navigator.mediaDevices?.getUserMedia)throw new Error('Camera access requires HTTPS.');
+    if(stream){$('identityStatus').textContent='Rear camera is active. Stop the rear camera before taking a selfie reference.';return;}
+    identitySelfieStream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'user'},width:{ideal:640},height:{ideal:480}}});
+    const v=$('selfieCaptureVideo');v.srcObject=identitySelfieStream;await v.play();$('selfieCaptureBox').hidden=false;$('identityStatus').textContent='Position your face and upper-body outfit in view, then take the reference photo.';
+   }catch(e){$('identityStatus').textContent='Could not open selfie camera: '+e.message;}
+ });
+ function closeSelfie(){if(identitySelfieStream){identitySelfieStream.getTracks().forEach(t=>t.stop());identitySelfieStream=null;}$('selfieCaptureVideo').srcObject=null;$('selfieCaptureBox').hidden=true;}
+ $('cancelSelfieSnapshot').addEventListener('click',closeSelfie);
+ $('takeSelfieSnapshot').addEventListener('click',()=>{
+   const v=$('selfieCaptureVideo');if(!v.videoWidth)return;
+   const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;c.getContext('2d').drawImage(v,0,0,c.width,c.height);
+   identityRefs[1]=c.toDataURL('image/jpeg',.78);$('identityRef1').textContent='Selfie reference captured ✓';$('identityStatus').textContent='Your reference is captured. The selfie camera is now off; place the phone behind the baseline and enable the rear camera.';closeSelfie();
+ });
+ function captureFriendReference(id){
+   if(!stream||!video.videoWidth){$('identityStatus').textContent='Enable the rear camera first, then capture friends.';return;}
+   const t=activeTracks().find(x=>x.id===id);if(!t){$('identityStatus').textContent='That player is not currently detected. Ask them to stand fully in view.';return;}
+   const lm=t.landmarks||[],xs=lm.filter(p=>(p.visibility??0)>.25).map(p=>p.x),ys=lm.filter(p=>(p.visibility??0)>.25).map(p=>p.y);
+   if(!xs.length||!ys.length){$('identityStatus').textContent='Could not crop the detected player. Try again when their body is visible.';return;}
+   const pad=.07,x=Math.max(0,Math.min(...xs)-pad),y=Math.max(0,Math.min(...ys)-pad),r=Math.min(1,Math.max(...xs)+pad),b=Math.min(1,Math.max(...ys)+pad);
+   const sx=x*video.videoWidth,sy=y*video.videoHeight,sw=Math.max(1,(r-x)*video.videoWidth),sh=Math.max(1,(b-y)*video.videoHeight);
+   const c=document.createElement('canvas');c.width=320;c.height=Math.max(180,Math.round(320*sh/sw));c.getContext('2d').drawImage(video,sx,sy,sw,sh,0,0,c.width,c.height);
+   identityRefs[id]=c.toDataURL('image/jpeg',.78);$('identityRef'+id).textContent='Court reference captured ✓';$('identityStatus').textContent=playerName(id)+' reference captured from the currently detected P'+id+' track. Check the player selection before recording.';
+ }
+ document.querySelectorAll('.captureFriend').forEach(b=>b.addEventListener('click',()=>captureFriendReference(Number(b.dataset.player))));
+ $('identityRefresh').addEventListener('click',()=>{$('identityStatus').textContent=activeTracks().length+' player(s) currently detected. Capture buttons use the live temporary track IDs; confirm the correct person before saving.';});
  const monitor=document.createElement('section');monitor.id='courtMonitor';monitor.innerHTML='<div><div class="cm-title">COURT DETECTION MONITOR</div><div class="cm-sub" id="cmStatus">Waiting for rear camera…</div></div><div class="cm-count" id="cmCount">0 / 4</div><div class="cm-players" id="cmPlayers"><span class="cm-player missing">P1 · Waiting</span><span class="cm-player missing">P2 · Waiting</span><span class="cm-player missing">P3 · Waiting</span><span class="cm-player missing">P4 · Waiting</span></div><div class="cm-tip">Silent visual feedback · Tap a detected player marker or player button below to select yourself.</div>';
  live.appendChild(monitor);
  const playersPanel=$('players')?.closest('.panel');
