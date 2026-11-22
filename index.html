@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#101820">
 <link rel="icon" href="data:,">
-<title>Badminton AI Coach — Stage 17.7 · Live & Video Analysis</title>
+<title>Badminton AI Coach — Stage 17.6 · Live & Video Analysis</title>
 <style>
 :root{color-scheme:dark;--bg:#101820;--panel:#182630;--muted:#9fb0bb;--accent:#63e6be;--line:#30434f}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f4f7f8;font:15px system-ui,-apple-system,Segoe UI,sans-serif}
@@ -17,7 +17,7 @@ main{max-width:1100px;margin:auto;padding:14px;display:grid;gap:14px}
 button,select{background:#263b47;color:white;border:1px solid #45606e;border-radius:10px;padding:11px 14px;font-weight:650;font-size:14px}
 button.primary{background:#087f61;border-color:#087f61}button:disabled{opacity:.45}button:active{transform:scale(.98)}
 .stage{position:relative;background:#05090c;border-radius:12px;overflow:hidden;aspect-ratio:16/9;display:grid;place-items:center}
-#video,#overlay{position:absolute;width:100%;height:100%;object-fit:contain;inset:0}
+#video,#overlay{position:absolute;width:100%;height:100%;object-fit:contain;inset:0}#video{z-index:1}#overlay{z-index:2;pointer-events:auto}
 #heatmapFrame{isolation:isolate}
 #heatmap{position:relative !important;display:block !important;inset:auto !important;float:none !important;transform:none !important;width:100% !important;height:auto !important;max-height:none !important;object-fit:initial !important;touch-action:auto;cursor:default}
 #overlay{touch-action:manipulation;cursor:pointer}.placeholder{color:var(--muted);text-align:center;padding:24px;max-width:400px;z-index:1;pointer-events:none}
@@ -803,11 +803,14 @@ function updateTracks(detections){
       if(distance<bestDistance){best=t;bestDistance=distance;}
     }
     if(best){
-      best.hip=d.hip||{x:cx,y:cy};best.box=d.box||best.box;best.landmarks=d.landmarks||null;best.score=d.score??best.score;best.missed=0;used.add(best.id);d.track=best;
+      best.hip=d.hip||{x:cx,y:cy};best.box=d.box||best.box;
+      if(d.landmarks){best.landmarks=d.landmarks;best.landmarkMisses=0;}
+      else{best.landmarkMisses=(best.landmarkMisses||0)+1;if(best.landmarkMisses>3)best.landmarks=null;}
+      best.score=d.score??best.score;best.missed=0;used.add(best.id);d.track=best;
     }else{
       const slot=uploadedVideoMode?[1,2,3,4].find(n=>!tracks.some(existing=>existing.slot===n&&existing.missed<=LOST_AFTER)):null;
       const liveSlot=slot||[1,2,3,4].find(n=>!tracks.some(existing=>existing.slot===n&&existing.missed<=LOST_AFTER));
-      const t={id:nextId++,slot:liveSlot||Math.min(4,nextId),hip:d.hip||{x:cx,y:cy},box:d.box||null,landmarks:d.landmarks||null,score:d.score??0,missed:0};
+      const t={id:nextId++,slot:liveSlot||Math.min(4,nextId),hip:d.hip||{x:cx,y:cy},box:d.box||null,landmarks:d.landmarks||null,landmarkMisses:0,score:d.score??0,missed:0};
       tracks.push(t);used.add(t.id);d.track=t;
     }
   }
@@ -1204,6 +1207,8 @@ $("startBtn").addEventListener("click",()=>{
   $("time").textContent="00:00";$("pose").textContent="—";$("movement").textContent="0.0";$("fps").textContent="—";
   $("startBtn").disabled=true;$("stopBtn").disabled=false;$("downloadBtn").disabled=true;
   status("Training live",true);renderCoachHome();
+  const recordButton=document.getElementById("recordStart");if(recordButton){recordButton.disabled=true;recordButton.textContent="● RECORDING";recordButton.classList.add("recording");}
+  const recordStopButton=document.getElementById("recordStop");if(recordStopButton)recordStopButton.disabled=false;
   $("observation").textContent="Collecting movement samples for the selected player. All visible players are being tracked independently.";
   timer=setInterval(()=>$("time").textContent=fmt((performance.now()-sessionStart)/1000),250);
   if(!rafId)rafId=requestAnimationFrame(processFrame);
@@ -1484,6 +1489,8 @@ function stopSession(){
   running=false;clearInterval(timer);
   if(uploadedVideoMode)video.pause();
   $("startBtn").disabled=!landmarker;$("stopBtn").disabled=true;
+  const recordButton=document.getElementById("recordStart");if(recordButton){recordButton.disabled=!(stream&&video.videoWidth&&landmarker);recordButton.textContent="● START RECORDING";recordButton.classList.remove("recording");}
+  const recordStopButton=document.getElementById("recordStop");if(recordStopButton)recordStopButton.disabled=true;
   $("downloadBtn").disabled=records.length===0;status("Session stopped");renderCoachHome();
   const secs=uploadedVideoMode?Number(video.currentTime||0):(performance.now()-sessionStart)/1000;
   lastSessionDuration=secs;
@@ -2084,15 +2091,29 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
   });
  $('recordStart').addEventListener('click',()=>{
    if(running)return;
-   if(!stream){$('recordState').textContent='Requesting camera permission…';$('cameraBtn').click();}
-   if(!landmarker){
-     $('recordState').textContent='Waiting for camera access and AI model… recording will start automatically when ready.';
-     let waited=0;const waitForReady=setInterval(()=>{
+   if(!stream){
+     $('recordState').textContent='Requesting camera permission…';
+     $('cameraBtn').click();
+   }
+   if(!landmarker || !stream || !video.videoWidth){
+     $('recordState').textContent='Waiting for camera preview and AI model… recording will start automatically when ready.';
+     let waited=0;
+     const waitForReady=setInterval(()=>{
        waited+=250;
-       if(stream&&landmarker){clearInterval(waitForReady);$('startBtn').click();sync();}
-       else if(waited>=60000){clearInterval(waitForReady);$('recordState').textContent='Camera/AI is not ready. Check camera permission and try again.';sync();}
+       if(stream && video.videoWidth && landmarker){
+         clearInterval(waitForReady);
+         if(!running){$('startBtn').click();}
+         sync();
+       }else if(waited>=60000){
+         clearInterval(waitForReady);
+         $('recordState').textContent='Camera/AI is not ready. Check browser permission, then enable the camera again.';
+         sync();
+       }
      },250);
-   }else{$('startBtn').click();sync();}
+   }else{
+     $('startBtn').click();
+     sync();
+   }
  });
  $('recordStop').addEventListener('click',()=>{$('stopBtn').click();sync();});
  $('recordCalibrate').addEventListener('click',()=>{const details=$('courtCalibrationPanel')?.closest('details');if(details)details.open=true;$('calibrateBtn').click();$('courtCalibrationPanel')?.scrollIntoView({behavior:'smooth',block:'center'});});
@@ -2103,11 +2124,11 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
  function sync(){
    // Use the real media stream and loaded pose model as the recording gate.
    // The decorative status dot can be reset by unrelated status messages.
-   const cameraConnected=!!stream;
+   const cameraConnected=!!stream && !!video.videoWidth && video.readyState>=2;
    const modelReady=!!landmarker;
    const hasCamera=cameraConnected&&modelReady;
    const selected=!!document.getElementById('selection')?.textContent.includes('Following temporary ID');
-   const running=document.getElementById('stopBtn')?.disabled===false;
+   const isRecording=running;
    const detected=$('players')?.querySelectorAll('.player').length||0;
    const maxPlayers=quickMode.value==='singles'?2:4;
    for(let i=1;i<=4;i++){const card=$('identityName'+i)?.closest('.identity-card');if(card)card.hidden=i>maxPlayers;}
@@ -2125,20 +2146,15 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
    if(canvasSlots){canvasSlots.innerHTML='';for(let i=1;i<=maxPlayers;i++){const track=liveTracks[i-1];const present=!!track;const chip=document.createElement('span');chip.className='canvas-player-slot '+(present?'':'missing');chip.textContent='P'+i+(present?' · Detected':' · Waiting');chip.title=present?'Tracking player P'+i:'Waiting for player P'+i;canvasSlots.appendChild(chip);}}
    $('canvasDetectCount').textContent=liveTracks.length+' / '+maxPlayers+' detected';
 
-   // The old selfie monitor was removed from the Stage 17.5+ workflow.
-   // Guard optional legacy UI so a missing element cannot abort sync()
-   // before the recording controls are refreshed.
-   const selfieMonitor=$('selfieMonitor');
-   if(selfieMonitor?.style.display==='block'){
-     const selfieStatus=$('selfieStatus');
-     if(selfieStatus)selfieStatus.textContent=selected?'YOU SELECTED':'P'+detected+' DETECTED';
-   }
-   $('recordStart').disabled=running;
-   $('recordStart').setAttribute('aria-disabled',running?'true':'false');
-   $('recordStop').disabled=!running;
-   $('recordStart').classList.toggle('recording',running);
-   $('recordStart').textContent=running?'● RECORDING':(!cameraConnected?'● START CAMERA & RECORD':(!modelReady?'● WAITING FOR AI':'● START RECORDING'));
-   $('recordState').textContent=running?'Recording all detected player positions.':(!cameraConnected?'Enable camera to begin.':(!modelReady?'Camera connected. Waiting for AI models to finish loading…':(courtHomography?'Ready. Court mapping is active.':'Ready. Press Start Recording to track all visible players; identify yourself after stopping.')));
+   if($('selfieMonitor').style.display==='block')$('selfieStatus').textContent=selected?'YOU SELECTED':'P'+detected+' DETECTED';
+   // Recording is enabled only when the real camera stream AND pose model are ready.
+   // Court calibration and player detection are deliberately NOT prerequisites.
+   $('recordStart').disabled=!hasCamera || isRecording;
+   $('recordStart').setAttribute('aria-disabled',(!hasCamera || isRecording)?'true':'false');
+   $('recordStop').disabled=!isRecording;
+   $('recordStart').classList.toggle('recording',isRecording);
+   $('recordStart').textContent=isRecording?'● RECORDING':(!cameraConnected?'● ENABLE CAMERA FIRST':(!modelReady?'● LOADING AI MODEL':'● START RECORDING'));
+   $('recordState').textContent=isRecording?'Recording live player positions and drawing pose skeletons.':(!cameraConnected?'Enable the camera and wait for the live preview.':(!modelReady?'Camera connected. Waiting for the AI pose model…':'Ready to record. Court calibration and player detection are optional; recording can start now.'));
    $('quickTimer').textContent=$('time')?.textContent||'00:00';
    if(cameraConnected&&!modelReady)$('quickHint').textContent='Camera connected. Please wait for the AI models to finish loading.';
    if(hasCamera)$('quickHint').textContent='Camera and AI are ready. Press Start Recording; all visible players will be tracked and marked. Choose yourself after stopping.';
