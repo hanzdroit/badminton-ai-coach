@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#101820">
 <link rel="icon" href="data:,">
-<title>Badminton AI Coach — Stage 17.5 · Record, Identify & Analyse</title>
+<title>Badminton AI Coach — Stage 17.6 · Live & Video Analysis</title>
 <style>
 :root{color-scheme:dark;--bg:#101820;--panel:#182630;--muted:#9fb0bb;--accent:#63e6be;--line:#30434f}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f4f7f8;font:15px system-ui,-apple-system,Segoe UI,sans-serif}
@@ -167,12 +167,12 @@ header{position:sticky;top:0;z-index:30;background:#101b23eF;backdrop-filter:blu
 </head>
 <body>
 <header>
-  <div><h1>🏸 Badminton AI Coach</h1><div class="sub">Stage 17.5 · Record → Identify → Analyse</div></div>
+  <div><h1>🏸 Badminton AI Coach</h1><div class="sub">Stage 17.6 · Record → Identify → Analyse</div></div>
   <div class="status"><span id="liveDot" class="dot"></span><span id="statusText">Not connected</span></div>
 </header>
 <div id="quickStart">
  <div class="qs-card">
-  <div class="qs-head"><div><div class="qs-title">Ready for your game?</div><div class="qs-muted">Choose your session type and game format. Player slots will appear automatically on the camera.</div></div><span class="stage910Pill">STAGE 17.5 · LIVE MODE</span></div>
+  <div class="qs-head"><div><div class="qs-title">Ready for your game?</div><div class="qs-muted">Choose your session type and game format. Player slots will appear automatically on the camera.</div></div><span class="stage910Pill">STAGE 17.1 · LIVE MODE</span></div>
   <div class="qs-field"><label for="quickSessionType">Session type</label><select id="quickSessionType"><option value="training" selected>Training</option><option value="match">Match</option><option value="social">Social Game</option></select><label for="quickGameMode">Game format</label><select id="quickGameMode"><option value="singles">Singles · up to 2 players</option><option value="doubles" selected>Doubles · up to 4 players</option></select><label for="quickQuality">Processing</label><select id="quickQuality"><option value="640">Balanced</option><option value="480">Low</option><option value="960">Higher detail</option></select></div>
   <div class="qs-actions"><button id="quickCamera" class="primary">1 · Enable camera & detect players</button><button id="quickCalibrate">Calibrate court</button><button id="showAdvancedTop">Advanced / Demo tools</button></div>
   <div class="qs-muted" id="quickHint" style="margin-top:10px">Position your phone behind the baseline in landscape orientation. Keep all players and the full court visible.</div>
@@ -253,7 +253,7 @@ header{position:sticky;top:0;z-index:30;background:#101b23eF;backdrop-filter:blu
 <div id="advancedArea" hidden><button id="advancedToggle" type="button">Advanced / Demo tools · Show or hide</button><main id="advancedMain">
   <section class="panel" id="coachHome">
     <div class="toolbar" style="justify-content:space-between">
-      <div><h2>Stage 17.5 · Badminton AI Coach</h2><p class="note">Your session hub for camera setup, court mapping and movement analysis. Shuttle and rally labs are synthetic demonstrations.</p></div>
+      <div><h2>Stage 17.3 · Badminton AI Coach</h2><p class="note">Your session hub for camera setup, court mapping and movement analysis. Shuttle and rally labs are synthetic demonstrations.</p></div>
       <span class="stage910Pill" id="coachReadiness">SETUP NEEDED</span>
     </div>
     <div class="metrics">
@@ -822,7 +822,7 @@ function renderPlayers(){
     active.forEach((t,index)=>{
       const b=document.createElement("span");
       b.className="player"+(t.id===selectedId?" selected":"");
-      b.textContent="P"+(t.manualSlot|| (t.slot||index+1))+(t.landmarks?" · POSE":" · PERSON ONLY")+(t.id===selectedId?" · DEFAULT ANALYSIS":"");
+      b.textContent="P"+(t.manualSlot|| (t.slot||index+1))+(t.landmarks?" · POSE":" · TRACKING")+(t.id===selectedId?" · DEFAULT ANALYSIS":"");
       box.appendChild(b);
     });
   }
@@ -872,34 +872,56 @@ function drawCourt(){
   ctx.strokeStyle="#ff8fa3";ctx.setLineDash([10,7]);ctx.beginPath();ctx.moveTo(l.x*canvas.width,l.y*canvas.height);ctx.lineTo(r.x*canvas.width,r.y*canvas.height);ctx.stroke();ctx.setLineDash([]);
   courtCorners.forEach((p,i)=>{ctx.fillStyle="#f8df7a";ctx.beginPath();ctx.arc(p.x*canvas.width,p.y*canvas.height,canvas.width/100,0,Math.PI*2);ctx.fill();ctx.fillStyle="#101820";ctx.font="bold 18px system-ui";ctx.fillText(String(i+1),p.x*canvas.width+8,p.y*canvas.height-8);});ctx.restore();
 }
+function visibleLandmark(lm){return !!lm&&(lm.visibility??0)>=.22;}
+function getHeadPoint(t){
+  const lm=t.landmarks||[];
+  if(visibleLandmark(lm[0]))return {x:lm[0].x,y:lm[0].y};
+  if(t.box)return {x:t.box.x+t.box.w/2,y:t.box.y};
+  return {x:t.hip.x,y:Math.max(.02,t.hip.y-.28)};
+}
+function getFootPoint(t){
+  const lm=t.landmarks||[];const feet=[lm[27],lm[28],lm[29],lm[30],lm[31],lm[32]].filter(visibleLandmark);
+  if(feet.length)return {x:feet.reduce((a,p)=>a+p.x,0)/feet.length,y:Math.max(...feet.map(p=>p.y))};
+  return null;
+}
+function updateServeGesture(t,now){
+  const lm=t.landmarks||[];const wrists=[lm[15],lm[16]].filter(visibleLandmark),hips=[lm[23],lm[24]].filter(visibleLandmark);
+  if(!wrists.length||!hips.length){t.serveUntil=0;return;}
+  const hipY=hips.reduce((a,p)=>a+p.y,0)/hips.length;
+  const wristY=Math.min(...wrists.map(p=>p.y));
+  const nearBody=wrists.some(p=>Math.abs(p.x-(hips.reduce((a,q)=>a+q.x,0)/hips.length))<.30);
+  const history=t.serveMotion||(t.serveMotion=[]);history.push({y:wristY,t:now});
+  while(history.length&&now-history[0].t>900)history.shift();
+  const lowest=Math.max(...history.map(p=>p.y));
+  const upward=lowest-wristY;
+  // Conservative pose-only serve cue: a hand rises from a low position near the torso.
+  if(now>(t.serveCooldownUntil||0)&&nearBody&&wristY>hipY-.65&&upward>.10){t.serveUntil=now+1100;t.serveCooldownUntil=now+1800;}
+}
+function drawPlayerArrow(t,index){
+  const color=COLORS[((t.slot||index+1)-1)%COLORS.length],head=getHeadPoint(t);
+  const x=head.x*canvas.width,y=Math.max(18,head.y*canvas.height-Math.max(24,canvas.height*.055));
+  const label='P'+(t.manualSlot||t.slot||index+1);
+  ctx.save();ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=Math.max(3,canvas.width/420);ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(x,y+22);ctx.lineTo(x,y+5);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(x-7,y+12);ctx.lineTo(x,y+3);ctx.lineTo(x+7,y+12);ctx.closePath();ctx.fill();
+  ctx.font=`800 ${Math.max(15,canvas.width/52)}px system-ui`;const tw=ctx.measureText(label).width+14;
+  ctx.fillStyle='rgba(5,12,18,.88)';ctx.fillRect(x-tw/2,y-22,tw,21);ctx.strokeStyle=color;ctx.lineWidth=2;ctx.strokeRect(x-tw/2,y-22,tw,21);
+  ctx.fillStyle='#fff';ctx.textAlign='center';ctx.fillText(label,x,y-7);ctx.restore();
+}
 function drawAll(){
   ctx.clearRect(0,0,canvas.width,canvas.height);drawCourt();
-  // Short live movement trail for the selected player (hip-centre path).
-  if(liveTrail.length>1){
-    ctx.save();ctx.beginPath();
-    liveTrail.forEach((p,i)=>{const x=p.x*canvas.width,y=p.y*canvas.height;i?ctx.lineTo(x,y):ctx.moveTo(x,y);});
-    ctx.strokeStyle="#63e6be";ctx.lineWidth=4;ctx.lineCap="round";ctx.lineJoin="round";ctx.stroke();ctx.restore();
-  }
-  const drawer=new DrawingUtils(ctx);
+  if(liveTrail.length>1){ctx.save();ctx.beginPath();liveTrail.forEach((p,i)=>{const x=p.x*canvas.width,y=p.y*canvas.height;i?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.strokeStyle='#63e6be';ctx.lineWidth=4;ctx.lineCap='round';ctx.lineJoin='round';ctx.stroke();ctx.restore();}
+  const drawer=new DrawingUtils(ctx),now=performance.now();
   activeTracks().forEach((t,index)=>{
-    const chosen=t.id===selectedId;
-    const color=chosen?"#63e6be":COLORS[index%COLORS.length];
-    if(t.box){
-      const x=t.box.x*canvas.width,y=t.box.y*canvas.height,w=t.box.w*canvas.width,h=t.box.h*canvas.height;
-      ctx.save();ctx.strokeStyle=color;ctx.lineWidth=Math.max(3,canvas.width/320);ctx.strokeRect(x,y,w,h);
-      ctx.fillStyle=color;ctx.font=`bold ${Math.max(14,canvas.width/42)}px system-ui`;
-      const tag=identityLabelForTrack(t,index)+` · PERSON ${Math.round((t.score||0)*100)}%`;
-      const tw=ctx.measureText(tag).width+14;ctx.fillRect(x,Math.max(0,y-28),tw,26);ctx.fillStyle="#08131a";ctx.fillText(tag,x+7,Math.max(18,y-9));ctx.restore();
-    }
+    const color=COLORS[((t.slot||index+1)-1)%COLORS.length];
+    // Pose skeleton is the primary body overlay. No player bounding boxes are drawn.
     if(t.landmarks){
-      drawer.drawConnectors(t.landmarks,PoseLandmarker.POSE_CONNECTIONS,{color,lineWidth:chosen?5:3});
-      drawer.drawLandmarks(t.landmarks,{color:"#fff",fillColor:color,lineWidth:1,radius:Math.max(4,canvas.width/260)});
+      drawer.drawConnectors(t.landmarks,PoseLandmarker.POSE_CONNECTIONS,{color,lineWidth:Math.max(3,canvas.width/420)});
+      drawer.drawLandmarks(t.landmarks,{color:'#fff',fillColor:color,lineWidth:1,radius:Math.max(4,canvas.width/280)});
     }
-    // Always draw a high-contrast tracked-player marker, even when pose landmarks are temporarily unavailable.
-    const hx=t.hip.x*canvas.width,hy=t.hip.y*canvas.height;
-    ctx.save();ctx.beginPath();ctx.arc(hx,hy,Math.max(8,canvas.width/150),0,Math.PI*2);ctx.fillStyle=color;ctx.fill();ctx.lineWidth=3;ctx.strokeStyle="#ffffff";ctx.stroke();
-    ctx.font=`bold ${Math.max(15,canvas.width/48)}px system-ui`;const tag="P"+(t.slot||index+1);const tw=ctx.measureText(tag).width+14;
-    ctx.fillStyle=color;ctx.fillRect(hx+10,hy-30,tw,25);ctx.fillStyle="#071018";ctx.fillText(tag,hx+17,hy-12);ctx.restore();
+    drawPlayerArrow(t,index);
+    // A small ground-contact circle is shown only while the pose-only serve cue is active.
+    if(t.serveUntil&&now<t.serveUntil){const foot=getFootPoint(t);if(foot){const fx=foot.x*canvas.width,fy=foot.y*canvas.height;ctx.save();ctx.beginPath();ctx.ellipse(fx,fy+Math.max(3,canvas.height*.008),Math.max(12,canvas.width*.018),Math.max(5,canvas.height*.012),0,0,Math.PI*2);ctx.strokeStyle=color;ctx.lineWidth=Math.max(3,canvas.width/420);ctx.fillStyle=color+'33';ctx.fill();ctx.stroke();ctx.restore();}}
   });
 }
 function canvasPointFromEvent(e){
@@ -1147,6 +1169,7 @@ function processFrame(now){
       const maxPlayers=$("mode").value==="singles"?2:4;
       detections.sort((a,b)=>a.hip.y-b.hip.y);
       updateTracks(detections.slice(0,maxPlayers));
+      activeTracks().forEach(t=>updateServeGesture(t,now));
       if(uploadedVideoMode){const p1=activeTracks().find(t=>t.slot===1);if(p1&&selectedId!==p1.id&&!activeTracks().some(t=>t.id===selectedId)){selectedId=p1.id;selectedLastHip=null;}}
       updateAppearanceTracks();
       drawAll();renderPlayers();
@@ -2099,11 +2122,12 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
      cm.appendChild(chip);
    }
    const canvasSlots=$('canvasPlayerSlots');
-   if(canvasSlots){canvasSlots.innerHTML='';for(let i=1;i<=maxPlayers;i++){const present=!!liveTracks[i-1];const chip=document.createElement('button');chip.type='button';chip.className='canvas-player-slot '+(present?'':'missing');const mappedId=Object.entries(appearanceTrackMap).find(([pid,tid])=>tid===actual?.id)?.[0];chip.textContent=(mappedId?'P'+mappedId:'P'+i)+(present?' · Detected':' · Waiting');chip.title='Open P'+i+' player setup';chip.addEventListener('click',()=>{const details=$('identityDetails');if(details)details.open=true;$('identityName'+i)?.focus({preventScroll:true});$('playerIdentityPanel')?.scrollIntoView({block:'nearest',behavior:'smooth'});});canvasSlots.appendChild(chip);}}
+   if(canvasSlots){canvasSlots.innerHTML='';for(let i=1;i<=maxPlayers;i++){const track=liveTracks[i-1];const present=!!track;const chip=document.createElement('span');chip.className='canvas-player-slot '+(present?'':'missing');chip.textContent='P'+i+(present?' · Detected':' · Waiting');chip.title=present?'Tracking player P'+i:'Waiting for player P'+i;canvasSlots.appendChild(chip);}}
    $('canvasDetectCount').textContent=liveTracks.length+' / '+maxPlayers+' detected';
 
    if($('selfieMonitor').style.display==='block')$('selfieStatus').textContent=selected?'YOU SELECTED':'P'+detected+' DETECTED';
    $('recordStart').disabled=running;
+   $('recordStart').setAttribute('aria-disabled',running?'true':'false');
    $('recordStop').disabled=!running;
    $('recordStart').classList.toggle('recording',running);
    $('recordStart').textContent=running?'● RECORDING':(!cameraConnected?'● START CAMERA & RECORD':(!modelReady?'● WAITING FOR AI':'● START RECORDING'));
