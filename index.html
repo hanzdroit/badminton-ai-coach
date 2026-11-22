@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#101820">
 <link rel="icon" href="data:,">
-<title>Badminton AI Coach — Stage 17.6 · Live & Video Analysis</title>
+<title>Badminton AI Coach — Stage 17.8 · Live & Video Analysis</title>
 <style>
 :root{color-scheme:dark;--bg:#101820;--panel:#182630;--muted:#9fb0bb;--accent:#63e6be;--line:#30434f}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f4f7f8;font:15px system-ui,-apple-system,Segoe UI,sans-serif}
@@ -578,7 +578,7 @@ import { PoseLandmarker, ObjectDetector, FilesetResolver, DrawingUtils } from "h
 
 const $ = id => document.getElementById(id);
 const video=$("video"), canvas=$("overlay"), ctx=canvas.getContext("2d");
-let stream=null, landmarker=null, personDetector=null, running=false, sessionStart=0, timer=null, lastVideoTime=-1, detectionFacing="environment";
+let stream=null, landmarker=null, personDetector=null, running=false, sessionStart=0, timer=null, lastVideoTime=-1, detectionFacing="environment", cameraStarting=false;
 let uploadedVideoMode=false, uploadedVideoUrl=null, uploadedVideoName="", liveSetupMode="you", pendingPlayerSlot=null;
 let currentSessionType="training";
 let replayFrames=[], lastReplayCapture=0, replayTimer=null, replayIndex=0, liveTrail=[];
@@ -760,24 +760,97 @@ async function loadModel(){
   if(!rafId)rafId=requestAnimationFrame(processFrame);
 }
 $("cameraBtn").addEventListener("click",async()=>{
+  if(cameraStarting)return;
+  // Reuse a healthy stream instead of opening the same camera a second time.
+  if(stream && stream.getVideoTracks().some(t=>t.readyState==="live") && video.srcObject===stream){
+    if(video.paused)try{await video.play();}catch(e){console.warn("Camera preview resume failed",e);}
+    if(video.videoWidth){
+      $("cameraBtn").disabled=true;
+      status("Camera already connected",true);
+      if(!landmarker)await loadModel();
+      else if(!rafId)rafId=requestAnimationFrame(processFrame);
+      return;
+    }
+  }
+  cameraStarting=true;
+  const cameraButton=$("cameraBtn");
+  cameraButton.disabled=true;
   try{
     if(!navigator.mediaDevices?.getUserMedia)throw new Error("Camera access requires HTTPS and a supported browser.");
-    stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{
-      facingMode:{ideal:detectionFacing},width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30,max:30}
-    }});
-    video.srcObject=stream;await video.play();
-    await new Promise(resolve=>{if(video.videoWidth)resolve();else video.onloadedmetadata=resolve;});
-    $("placeholder").style.display="none";resizeCanvas();window.addEventListener("resize",resizeCanvas);
-    $("cameraBtn").disabled=true;status((detectionFacing==="user"?"Selfie":"Rear")+" camera connected",true);if(!landmarker)await loadModel();else{if(!rafId)rafId=requestAnimationFrame(processFrame);$("fpsText").textContent="AI: detecting players";}
+    // Release any stale stream owned by this page before requesting the device again.
+    if(stream){
+      stream.getTracks().forEach(t=>t.stop());
+      stream=null;
+      video.pause();
+      video.srcObject=null;
+    }
+    status("Requesting camera access…",false);
+    let newStream;
+    try{
+      newStream=await navigator.mediaDevices.getUserMedia({audio:false,video:{
+        facingMode:{ideal:detectionFacing},width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30,max:30}
+      }});
+    }catch(firstError){
+      // Retry with browser-default resolution in case the requested format is unsupported.
+      if(firstError?.name==="OverconstrainedError" || firstError?.name==="NotReadableError"){
+        console.warn("Preferred camera format unavailable; retrying with basic video constraints",firstError);
+        newStream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:detectionFacing}}});
+      }else{
+        throw firstError;
+      }
+    }
+    stream=newStream;
+    video.srcObject=stream;
+    await video.play();
+    if(!video.videoWidth){
+      await new Promise((resolve,reject)=>{
+        const onReady=()=>{cleanup();resolve();};
+        const onError=()=>{cleanup();reject(new Error("Camera preview could not be loaded."));};
+        const cleanup=()=>{
+          video.removeEventListener("loadedmetadata",onReady);
+          video.removeEventListener("error",onError);
+        };
+        video.addEventListener("loadedmetadata",onReady,{once:true});
+        video.addEventListener("error",onError,{once:true});
+      });
+    }
+    $("placeholder").style.display="none";
+    resizeCanvas();
+    window.addEventListener("resize",resizeCanvas);
+    cameraButton.disabled=true;
+    status((detectionFacing==="user"?"Selfie":"Rear")+" camera connected",true);
+    if(!landmarker)await loadModel();
+    else{
+      if(!rafId)rafId=requestAnimationFrame(processFrame);
+      $("fpsText").textContent="AI: detecting players";
+    }
   }catch(e){
-    console.error("Camera/model setup failed",e);
-    status("Setup failed · "+(e?.message||"AI unavailable"),!!stream);
-    $("observation").textContent="Camera may be connected, but the pose model did not finish loading: "+(e?.message||String(e))+". Keep this page open and retry; if GPU is unavailable the app will try CPU.";
+    console.error("Camera setup failed",e);
+    if(stream){
+      stream.getTracks().forEach(t=>t.stop());
+      stream=null;
+    }
+    video.pause();
+    video.srcObject=null;
+    cameraButton.disabled=false;
+    const message=e?.name==="NotReadableError"
+      ?"The camera is unavailable or already in use. Close other browser tabs/apps using the camera, then try Enable camera again."
+      :e?.name==="NotAllowedError"
+      ?"Camera permission was denied. Allow camera access for this site in your browser settings, then retry."
+      :e?.name==="NotFoundError"
+      ?"No camera was found. Connect or select an available camera, then retry."
+      :(e?.message||"AI unavailable");
+    status("Camera setup failed · "+message,false);
+    $("observation").textContent=message;
+    $("placeholder").style.display="grid";
+  }finally{
+    cameraStarting=false;
   }
 });
 
 // Camera source selector lives on the camera canvas. Only one camera is active at a time.
 $("detectionCamera").addEventListener("change",async e=>{
+  if(cameraStarting)return;
   const next=e.target.value;
   if(next===detectionFacing && stream)return;
   detectionFacing=next;
@@ -2146,7 +2219,10 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
    if(canvasSlots){canvasSlots.innerHTML='';for(let i=1;i<=maxPlayers;i++){const track=liveTracks[i-1];const present=!!track;const chip=document.createElement('span');chip.className='canvas-player-slot '+(present?'':'missing');chip.textContent='P'+i+(present?' · Detected':' · Waiting');chip.title=present?'Tracking player P'+i:'Waiting for player P'+i;canvasSlots.appendChild(chip);}}
    $('canvasDetectCount').textContent=liveTracks.length+' / '+maxPlayers+' detected';
 
-   if($('selfieMonitor').style.display==='block')$('selfieStatus').textContent=selected?'YOU SELECTED':'P'+detected+' DETECTED';
+   const selfieMonitor=$('selfieMonitor'),selfieStatus=$('selfieStatus');
+   if(selfieMonitor && selfieStatus && selfieMonitor.style.display==='block'){
+     selfieStatus.textContent=selected?'YOU SELECTED':'P'+detected+' DETECTED';
+   }
    // Recording is enabled only when the real camera stream AND pose model are ready.
    // Court calibration and player detection are deliberately NOT prerequisites.
    $('recordStart').disabled=!hasCamera || isRecording;
