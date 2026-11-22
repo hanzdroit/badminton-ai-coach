@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#101820">
 <link rel="icon" href="data:,">
-<title>Badminton AI Coach · Live & Video Analysis</title>
+<title>Badminton AI Coach | Live & Video Analysis</title>
 <style>
 :root{color-scheme:dark;--bg:#101820;--panel:#182630;--muted:#9fb0bb;--accent:#63e6be;--line:#30434f}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f4f7f8;font:15px system-ui,-apple-system,Segoe UI,sans-serif}
@@ -159,6 +159,9 @@ header{position:sticky;top:0;z-index:30;background:#101b23eF;backdrop-filter:blu
 #cameraZoomControls input{accent-color:#63e6be}
 #cameraZoomControls button{padding:7px 11px;font-size:12px}
 @media(max-width:650px){#quickStart,#liveWorkspace,#advancedArea{padding-left:10px;padding-right:10px}#liveWorkspace #stage{min-height:220px;aspect-ratio:4/3}.qs-title{font-size:18px}}
+
+/* Stage 17.4.1: remove obsolete pre-match identity/setup UI */
+#livePlayerSetupPanel, #identityDetails { display:none !important; }
 </style>
 
 </head>
