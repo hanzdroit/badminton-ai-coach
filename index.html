@@ -791,10 +791,30 @@ $("cameraBtn").addEventListener("click",async()=>{
         facingMode:{ideal:detectionFacing},width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30,max:30}
       }});
     }catch(firstError){
-      // Retry with browser-default resolution in case the requested format is unsupported.
-      if(firstError?.name==="OverconstrainedError" || firstError?.name==="NotReadableError"){
-        console.warn("Preferred camera format unavailable; retrying with basic video constraints",firstError);
+      if(firstError?.name==="OverconstrainedError"){
+        // A format constraint failed: retry without resolution or frame-rate preferences.
+        console.warn("Preferred camera format unavailable; retrying without format preferences",firstError);
         newStream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:detectionFacing}}});
+      }else if(firstError?.name==="NotReadableError"){
+        // The selected device is busy or failed to start. Try other enumerated cameras by ID.
+        console.warn("Preferred camera could not start; checking other camera devices",firstError);
+        let lastCameraError=firstError;
+        try{
+          const devices=await navigator.mediaDevices.enumerateDevices();
+          const cameras=devices.filter(device=>device.kind==="videoinput");
+          for(const camera of cameras){
+            try{
+              newStream=await navigator.mediaDevices.getUserMedia({audio:false,video:{deviceId:{exact:camera.deviceId}}});
+              break;
+            }catch(deviceError){
+              lastCameraError=deviceError;
+              console.warn("Could not start camera device",camera.label||"(unnamed camera)",deviceError);
+            }
+          }
+        }catch(enumerationError){
+          console.warn("Could not enumerate camera devices",enumerationError);
+        }
+        if(!newStream)throw lastCameraError;
       }else{
         throw firstError;
       }
@@ -834,7 +854,7 @@ $("cameraBtn").addEventListener("click",async()=>{
     video.srcObject=null;
     cameraButton.disabled=false;
     const message=e?.name==="NotReadableError"
-      ?"The camera is unavailable or already in use. Close other browser tabs/apps using the camera, then try Enable camera again."
+      ?"The camera could not start. Close apps or browser tabs using it, check camera permission in Windows and your browser, then retry. If another camera is available, choose it from the camera selector."
       :e?.name==="NotAllowedError"
       ?"Camera permission was denied. Allow camera access for this site in your browser settings, then retry."
       :e?.name==="NotFoundError"
@@ -854,11 +874,13 @@ $("detectionCamera").addEventListener("change",async e=>{
   const next=e.target.value;
   if(next===detectionFacing && stream)return;
   detectionFacing=next;
-  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;video.srcObject=null;}
+  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;video.pause();video.srcObject=null;}
   lastVideoTime=-1;tracks=[];nextId=1;selectedId=null;selectedLastHip=null;
   $("cameraBtn").disabled=false;$("placeholder").style.display="grid";
   status("Switching camera…",false);
-  try{$("cameraBtn").click();}catch(err){status("Camera switch failed · "+err.message,false);}
+  // Give the browser/driver a moment to release the previous device before reopening.
+  await new Promise(resolve=>setTimeout(resolve,250));
+  $("cameraBtn").click();
 });
 
 // Track person detections independently from pose landmarks. Pose is attached when available.
@@ -2148,7 +2170,8 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
   <div id="matchAnalysisResult" class="note" style="margin-top:12px">Stop recording, choose your P1–P4 identity, then analyse the flat movement map.</div>
  </div>`);
 
- live.appendChild(replay);
+ // Keep the Replay workspace ahead of the saved Match Library in the page flow.
+ live.insertBefore(replay,library);
  // Put the live camera and detected players before recording controls.
  const quickMode=$('quickGameMode'),oldMode=$('mode'),quality=$('quality');
  const quickSessionType=$("quickSessionType");
