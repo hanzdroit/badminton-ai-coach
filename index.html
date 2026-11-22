@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#101820">
 <link rel="icon" href="data:,">
-<title>Badminton AI Coach — Stage 17.3 · Live & Video Analysis</title>
+<title>Badminton AI Coach</title>
 <style>
 :root{color-scheme:dark;--bg:#101820;--panel:#182630;--muted:#9fb0bb;--accent:#63e6be;--line:#30434f}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f4f7f8;font:15px system-ui,-apple-system,Segoe UI,sans-serif}
@@ -141,6 +141,8 @@ header{position:sticky;top:0;z-index:30;background:#101b23eF;backdrop-filter:blu
 #liveWorkspace{max-width:1100px;margin:0 auto;padding:0 14px 18px;display:grid;gap:12px}
 #liveWorkspace .panel{margin:0}
 #liveWorkspace #stage{aspect-ratio:16/9;min-height:260px;position:relative;overflow:hidden}
+#liveWorkspace #mainRecordingPanel{order:2}
+#liveWorkspace #courtMonitor{order:3}
 #liveWorkspace #players{display:flex;gap:10px;flex-wrap:wrap}
 #liveWorkspace .player{min-width:72px;padding:12px 16px;font-size:14px}
 #liveWorkspace #cameraBtn,#liveWorkspace #startBtn,#liveWorkspace #stopBtn{display:none!important}
@@ -149,6 +151,9 @@ header{position:sticky;top:0;z-index:30;background:#101b23eF;backdrop-filter:blu
 #liveWorkspace #recordBar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 #recordStart{background:#087f61;border-color:#087f61;font-size:16px;padding:14px 22px}
 #recordStart.recording{background:#9d3030;border-color:#c44b4b}
+#mainRecordingPanel{margin-top:0}
+#recordBar .toolbar{gap:8px}
+@media(max-width:620px){#recordBar{align-items:stretch!important}#recordBar>div:last-child{width:100%;display:grid;grid-template-columns:1fr 1fr}#recordStart{grid-column:1/-1;width:100%;min-height:54px;font-size:17px}#recordStop,#recordCalibrate{width:100%}}
 #advancedArea{max-width:1100px;margin:0 auto 24px;padding:0 14px}
 #advancedArea[hidden]{display:none!important}
 #advancedArea main{padding:0;max-width:none}
@@ -1167,6 +1172,7 @@ function processFrame(now){
 }
 $("startBtn").addEventListener("click",()=>{
   if(!landmarker)return;
+  if(!uploadedVideoMode && (!video.srcObject || video.readyState<2 || video.paused)){status("Camera is not ready yet",false);return;}
   running=true;sessionStart=performance.now();lastVideoTime=-1;playerHistories={};postMatchChosenId=null;lastHistoryCapture=0;
   lastSessionDuration=0;dashboardPreview=false;recommendationPreview=false;
   movementTotal=0;selectedLastHip=null;selectedSamples=0;records=[];frameTimes=[];replayFrames=[];lastReplayCapture=0;liveTrail=[];
@@ -1835,7 +1841,8 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
  }
  zoomSlider.addEventListener('input',e=>setCameraZoom(e.target.value));
  zoomReset.addEventListener('click',()=>setCameraZoom(1));
- video.addEventListener('loadedmetadata',()=>setTimeout(syncCameraZoom,150),{passive:true});
+ video.addEventListener('loadedmetadata',()=>{setTimeout(syncCameraZoom,150);setTimeout(()=>{if(typeof sync==='function')sync();},180);},{passive:true});
+ video.addEventListener('playing',()=>{if(typeof sync==='function')sync();},{passive:true});
 
  const identityPanel=document.createElement('section');identityPanel.id='playerIdentityPanel';identityPanel.className='panel';
  identityPanel.innerHTML=`<details id="identityDetails" open>
@@ -1930,14 +1937,16 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
  document.querySelectorAll('.captureFriend').forEach(b=>b.addEventListener('click',()=>captureFriendReference(Number(b.dataset.player))));
  $('identityRefresh').addEventListener('click',()=>{$('identityStatus').textContent=activeTracks().length+' player(s) currently detected. Capture buttons use the live temporary track IDs; confirm the correct person before saving.';});
  const monitor=document.createElement('section');monitor.id='courtMonitor';monitor.innerHTML='<div><div class="cm-title">COURT DETECTION MONITOR</div><div class="cm-sub" id="cmStatus">Waiting for rear camera…</div></div><div class="cm-count" id="cmCount">0 / 4</div><div class="cm-players" id="cmPlayers"><span class="cm-player missing">P1 · Waiting</span><span class="cm-player missing">P2 · Waiting</span><span class="cm-player missing">P3 · Waiting</span><span class="cm-player missing">P4 · Waiting</span></div><div class="cm-tip">Live player detection status · Choose yourself after the match.</div>';
- live.appendChild(monitor);
  const playersPanel=$('players')?.closest('.panel');
  const calibration=$('courtCalibrationPanel');
-  if(cameraPanel)live.appendChild(cameraPanel);
+ // Main workflow order: live camera first; recording controls are inserted immediately after it.
+ if(cameraPanel)live.appendChild(cameraPanel);
+ live.appendChild(monitor);
 
  // Live player setup: choose YOU-only default or explicitly manage all four players.
  const setup=document.createElement('section');setup.className='panel';setup.id='livePlayerSetupPanel';
  setup.innerHTML='<strong style="font-size:17px">Live player setup</strong><div class="note" style="margin:5px 0 10px">Choose how to assign players for a live camera session.</div><div class="toolbar"><label for="liveSetupMode">Player setup</label><select id="liveSetupMode"><option value="you" selected>Identify YOU (P1); detect others automatically</option><option value="all">Set all players P1–P4</option></select></div><div class="toolbar" id="manualPlayerAssign" style="margin-top:9px"><button type="button" data-slot="1">Assign P1 / YOU</button><button type="button" data-slot="2">Assign P2</button><button type="button" data-slot="3">Assign P3</button><button type="button" data-slot="4">Assign P4</button></div><div class="note" id="liveSetupHint" style="margin-top:8px">Choose Assign P1 / YOU, then tap the detected player on the camera. Other visible players are detected automatically.</div>';
+ setup.hidden=true;setup.style.display='none';
  live.appendChild(setup);
  setup.querySelector('#liveSetupMode').addEventListener('change',e=>{liveSetupMode=e.target.value;setup.querySelector('#liveSetupHint').textContent=liveSetupMode==='you'?'Select YOU as P1. Other visible players are detected automatically where possible.':'Assign P1–P4 individually from the live player markers. Player identities can still switch when players overlap.';});
  setup.querySelectorAll('[data-slot]').forEach(b=>b.addEventListener('click',()=>{pendingPlayerSlot=Number(b.dataset.slot);setup.querySelector('#liveSetupHint').textContent='Now tap the '+(pendingPlayerSlot===1?'YOU / P1':'P'+pendingPlayerSlot)+' marker or person in the camera view to assign that slot.';}));
@@ -2011,7 +2020,7 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
  });
  renderMatchLibrary();
 
- const record=document.createElement('section');record.className='panel';record.id='mainRecordingPanel';record.innerHTML='<div id="recordBar"><div><strong style="font-size:18px">Match recording</strong><div class="note" id="recordState">Enable camera to unlock recording. Court calibration is optional.</div></div><div class="toolbar"><span class="metric"><span class="label">TIME</span><span class="value" id="quickTimer">00:00</span></span><button id="recordStart" class="primary" disabled>● START RECORDING</button><button id="recordStop" disabled>STOP</button><button id="recordCalibrate">Calibrate court (optional)</button></div></div><div class="note" style="margin-top:10px">Player detection and colourful skeleton overlays run automatically. Recording captures all visible players; choose yourself after stopping.</div>';
+ const record=document.createElement('section');record.className='panel';record.id='mainRecordingPanel';record.innerHTML='<div id="recordBar"><div><strong style="font-size:18px">Match recording</strong><div class="note" id="recordState">Camera + AI ready unlock recording. Player detection and court calibration are not required.</div></div><div class="toolbar"><span class="metric"><span class="label">TIME</span><span class="value" id="quickTimer">00:00</span></span><button id="recordStart" class="primary" disabled>● START RECORDING</button><button id="recordStop" disabled>STOP</button><button id="recordCalibrate">Calibrate court (optional)</button></div></div><div class="note" style="margin-top:10px">Player detection and colourful skeleton overlays run automatically. Recording captures all visible players; choose yourself after stopping.</div>';
  live.appendChild(record);
  // Keep the recording controls immediately beside the live camera, not buried below the library.
  if(monitor?.parentNode)monitor.parentNode.insertBefore(record,monitor);
@@ -2050,9 +2059,10 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
  function sync(){
    // Use the real media stream and loaded pose model as the recording gate.
    // The decorative status dot can be reset by unrelated status messages.
-   const cameraConnected=!!stream;
+   const cameraConnected=!!stream && !!video.srcObject && video.readyState>=2 && !video.paused;
    const modelReady=!!landmarker;
    const hasCamera=cameraConnected&&modelReady;
+   // Recording must not depend on player count, player identity, or court calibration.
    const selected=!!document.getElementById('selection')?.textContent.includes('Following temporary ID');
    const running=document.getElementById('stopBtn')?.disabled===false;
    const detected=$('players')?.querySelectorAll('.player').length||0;
@@ -2073,11 +2083,11 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
    $('canvasDetectCount').textContent=liveTracks.length+' / '+maxPlayers+' detected';
 
    if($('selfieMonitor').style.display==='block')$('selfieStatus').textContent=selected?'YOU SELECTED':'P'+detected+' DETECTED';
-   $('recordStart').disabled=!hasCamera||running;
+   $('recordStart').disabled=(!hasCamera && !running) || running;
    $('recordStop').disabled=!running;
    $('recordStart').classList.toggle('recording',running);
    $('recordStart').textContent=running?'● RECORDING':'● START RECORDING';
-   $('recordState').textContent=running?'Recording all detected player positions.':(!cameraConnected?'Enable camera to begin.':(!modelReady?'Camera connected. Waiting for AI models to finish loading…':(courtHomography?'Ready. Court mapping is active.':'Ready. You can record now; court calibration is optional.')));
+   $('recordState').textContent=running?'Recording all detected player positions.':(!cameraConnected?'Enable the camera and wait for AI readiness.':(!modelReady?'Camera connected. Waiting for AI models to finish loading…':(courtHomography?'Ready. Court mapping is active.':'Ready. You can record now; court calibration is optional.')));
    $('quickTimer').textContent=$('time')?.textContent||'00:00';
    if(cameraConnected&&!modelReady)$('quickHint').textContent='Camera connected. Please wait for the AI models to finish loading.';
    if(hasCamera)$('quickHint').textContent='Camera and AI are ready. Colourful pose dots and skeleton lines should track visible players automatically. Start recording whenever you are ready.';
