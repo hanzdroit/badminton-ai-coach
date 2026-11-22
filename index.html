@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#101820">
 <link rel="icon" href="data:,">
-<title>Badminton AI Coach — Stage 17.3.2 · Startup & Mobile Fix</title>
+<title>Badminton AI Coach · Live & Video Analysis</title>
 <style>
 :root{color-scheme:dark;--bg:#101820;--panel:#182630;--muted:#9fb0bb;--accent:#63e6be;--line:#30434f}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f4f7f8;font:15px system-ui,-apple-system,Segoe UI,sans-serif}
@@ -161,20 +161,6 @@ header{position:sticky;top:0;z-index:30;background:#101b23eF;backdrop-filter:blu
 @media(max-width:650px){#quickStart,#liveWorkspace,#advancedArea{padding-left:10px;padding-right:10px}#liveWorkspace #stage{min-height:220px;aspect-ratio:4/3}.qs-title{font-size:18px}}
 </style>
 
-
-<style>
-/* Stage 17.3.2: stable, responsive player setup placement */
-#playerIdentityPanel{position:relative!important;z-index:1!important;left:auto!important;right:auto!important;bottom:auto!important;margin:0!important;max-height:none!important;overflow:visible!important;background:var(--panel)!important;backdrop-filter:none!important}
-#playerIdentityPanel details{display:block!important;max-height:none!important}
-#playerIdentityPanel details:not([open]) #playerIdentityContent{display:none}
-#playerIdentityPanel summary{padding:10px 12px!important;font-size:14px!important}
-#playerIdentityPanel .identity-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:9px!important}
-#playerIdentityPanel .identity-card{padding:10px!important}
-#playerIdentityPanel .identity-card button{font-size:12px!important;padding:9px!important}
-#playerIdentityPanel .identity-explain{font-size:11px!important}
-@media(max-width:620px){#playerIdentityPanel .identity-grid{grid-template-columns:1fr!important}#playerIdentityPanel .identity-card{display:grid;grid-template-columns:1fr;gap:5px}#playerIdentityPanel .identity-card input{font-size:16px;padding:10px}#playerIdentityPanel .identity-card button{width:100%;min-height:42px;font-size:13px}#playerIdentityPanel summary{font-size:13px!important}}
-</style>
-
 </head>
 <body>
 <header>
@@ -183,7 +169,7 @@ header{position:sticky;top:0;z-index:30;background:#101b23eF;backdrop-filter:blu
 </header>
 <div id="quickStart">
  <div class="qs-card">
-  <div class="qs-head"><div><div class="qs-title">Ready for your game?</div><div class="qs-muted">Choose your session type and game format. Player slots will appear automatically on the camera.</div></div><span class="stage910Pill">STAGE 17.3.2 · LIVE MODE</span></div>
+  <div class="qs-head"><div><div class="qs-title">Ready for your game?</div><div class="qs-muted">Choose your session type and game format. Player slots will appear automatically on the camera.</div></div><span class="stage910Pill">STAGE 17.1 · LIVE MODE</span></div>
   <div class="qs-field"><label for="quickSessionType">Session type</label><select id="quickSessionType"><option value="training" selected>Training</option><option value="match">Match</option><option value="social">Social Game</option></select><label for="quickGameMode">Game format</label><select id="quickGameMode"><option value="singles">Singles · up to 2 players</option><option value="doubles" selected>Doubles · up to 4 players</option></select><label for="quickQuality">Processing</label><select id="quickQuality"><option value="640">Balanced</option><option value="480">Low</option><option value="960">Higher detail</option></select></div>
   <div class="qs-actions"><button id="quickCamera" class="primary">1 · Enable camera & detect players</button><button id="quickCalibrate">Calibrate court</button><button id="showAdvancedTop">Advanced / Demo tools</button></div>
   <div class="qs-muted" id="quickHint" style="margin-top:10px">Position your phone behind the baseline in landscape orientation. Keep all players and the full court visible.</div>
@@ -264,7 +250,7 @@ header{position:sticky;top:0;z-index:30;background:#101b23eF;backdrop-filter:blu
 <div id="advancedArea" hidden><button id="advancedToggle" type="button">Advanced / Demo tools · Show or hide</button><main id="advancedMain">
   <section class="panel" id="coachHome">
     <div class="toolbar" style="justify-content:space-between">
-      <div><h2>Stage 17.3.2 · Badminton AI Coach</h2><p class="note">Your session hub for camera setup, court mapping and movement analysis. Shuttle and rally labs are synthetic demonstrations.</p></div>
+      <div><h2>Stage 17.3 · Badminton AI Coach</h2><p class="note">Your session hub for camera setup, court mapping and movement analysis. Shuttle and rally labs are synthetic demonstrations.</p></div>
       <span class="stage910Pill" id="coachReadiness">SETUP NEEDED</span>
     </div>
     <div class="metrics">
@@ -595,6 +581,7 @@ let currentSessionType="training";
 let replayFrames=[], lastReplayCapture=0, replayTimer=null, replayIndex=0, liveTrail=[];
 let frameTimes=[], movementTotal=0, records=[], processing=false, rafId=null;
 let tracks=[], nextId=1, selectedId=null, selectedLastHip=null, selectedSamples=0;
+let playerHistories={}, postMatchChosenId=null, lastHistoryCapture=0;
 let calibrationMode=false, courtCorners=[], courtHomography=null, lastCourtPoint=null;
 let previousBaseDistance=null, recoveryReturns=0, recoveryTowards=0, recoveryAway=0;
 let footworkSamples=[],lastFootworkSampleAt=0,footworkIsDemo=false,lastSessionDuration=0,dashboardPreview=false,recommendationPreview=false;
@@ -695,13 +682,13 @@ function addHeatSample(pt){
   renderHeatmap();
 }
 const COLORS=["#63e6be","#ffcc66","#7db7ff","#ff8fa3"];
-const MAX_DISTANCE=.22, LOST_AFTER=12;
+const MAX_DISTANCE=.22, LOST_AFTER=60;
 
 function status(text,on=false){$("statusText").textContent=text;$("liveDot").classList.toggle("on",on);renderCoachHome()}
 function renderCoachHome(){
-  const cameraReady=!!stream&&!!landmarker,playerReady=selectedId!==null,courtReady=!!courtHomography,ready=cameraReady&&playerReady&&courtReady;
+  const cameraReady=!!stream&&!!landmarker,playerReady=true,courtReady=!!courtHomography,ready=cameraReady&&courtReady;
   $("coachCameraState").textContent=cameraReady?"Ready":(stream?"Pose model loading":"Not connected");
-  $("coachPlayerState").textContent=playerReady?playerName(selectedId):"Not selected";
+  $("coachPlayerState").textContent=playerReady?"Choose after match":"Not selected";
   $("coachCourtState").textContent=courtReady?"Calibrated":"Not calibrated";
   $("coachSessionState").textContent=running?"Recording":(records.length?"Stopped":"Not started");
   $("coachReadiness").textContent=running?"SESSION LIVE":(ready?"READY TO TRAIN":"SETUP NEEDED");
@@ -709,11 +696,11 @@ function renderCoachHome(){
   $("coachStartBtn").disabled=running?false:!ready;
   $("coachGuidance").textContent=running
     ?"Live camera session is recording. Use Stop live session here or in the camera controls. Mapped analysis updates as player positions are detected."
-    :!stream?"Enable the camera and pose model, select yourself from the detected players, then calibrate the court."
+    :!stream?"Enable the camera. Player detection starts automatically; calibrate the court when the preview is ready."
       :!landmarker?"Camera is connected; wait for the on-device pose model to finish loading."
         :!playerReady?"Select your player from the live camera or detected-player list."
           :!courtReady?"Court mapping is required for heatmap, footwork, dashboard and coaching-prompt data."
-            :"Setup is ready. Start training to collect selected-player movement data; shuttle and rally labs remain simulations.";
+            :"Court is calibrated. Start recording whenever you are ready; choose your player after stopping.";
 }
 $("coachCameraLink").addEventListener("click",()=>{$("stage").scrollIntoView({behavior:"smooth",block:"center"});});
 $("coachCalibrateLink").addEventListener("click",()=>{
@@ -818,7 +805,8 @@ function updateTracks(detections){
       best.hip=d.hip||{x:cx,y:cy};best.box=d.box||best.box;best.landmarks=d.landmarks||null;best.score=d.score??best.score;best.missed=0;used.add(best.id);d.track=best;
     }else{
       const slot=uploadedVideoMode?[1,2,3,4].find(n=>!tracks.some(existing=>existing.slot===n&&existing.missed<=LOST_AFTER)):null;
-      const t={id:nextId++,slot,hip:d.hip||{x:cx,y:cy},box:d.box||null,landmarks:d.landmarks||null,score:d.score??0,missed:0};
+      const liveSlot=slot||[1,2,3,4].find(n=>!tracks.some(existing=>existing.slot===n&&existing.missed<=LOST_AFTER));
+      const t={id:nextId++,slot:liveSlot||null,hip:d.hip||{x:cx,y:cy},box:d.box||null,landmarks:d.landmarks||null,score:d.score??0,missed:0};
       tracks.push(t);used.add(t.id);d.track=t;
     }
   }
@@ -830,16 +818,16 @@ function renderPlayers(){
   box.innerHTML="";
   if(!active.length){box.textContent="No players detected yet.";}
   else{
-    for(const t of active){
+    active.forEach((t,index)=>{
       const b=document.createElement("span");
       b.className="player"+(t.id===selectedId?" selected":"");
-      b.textContent="P"+(t.manualSlot|| (uploadedVideoMode?(t.slot||index+1):t.id))+(t.landmarks?" · POSE":" · PERSON ONLY")+(t.id===selectedId?" · DEFAULT ANALYSIS":"");
+      b.textContent="P"+(t.manualSlot|| (t.slot||index+1))+(t.landmarks?" · POSE":" · PERSON ONLY")+(t.id===selectedId?" · DEFAULT ANALYSIS":"");
       box.appendChild(b);
-    }
+    });
   }
   $("selection").textContent=selectedId===null
-    ?"No player selected. P1 will be assigned automatically when a player is detected."
-    :"Following "+playerName(selectedId)+" (temporary track P"+selectedId+"). If players cross, confirm identity again.";
+    ?"Players are tracked automatically. Your identity will be selected after the match."
+    :"Following "+playerName(selectedId)+" (temporary track P"+selectedId+").";
   renderCoachHome();
 }
 function selectPlayer(id){
@@ -904,7 +892,7 @@ function drawAll(){
     }
     if(t.landmarks){
       drawer.drawConnectors(t.landmarks,PoseLandmarker.POSE_CONNECTIONS,{color,lineWidth:chosen?5:3});
-      drawer.drawLandmarks(t.landmarks,{color:"#fff",fillColor:color,lineWidth:1,radius:4});
+      drawer.drawLandmarks(t.landmarks,{color:"#fff",fillColor:color,lineWidth:1,radius:5});
     }
     if(!t.box){ctx.fillStyle=color;ctx.font="bold 18px system-ui";ctx.fillText(identityLabelForTrack(t,index),t.hip.x*canvas.width+8,t.hip.y*canvas.height-8);}
   });
@@ -1114,6 +1102,15 @@ function processSelectedPlayer(now){
     player_id:selectedId,hip_x:hip.x.toFixed(4),hip_y:hip.y.toFixed(4)
   });
 }
+
+function pointInCourt(pt,margin=.06){
+  if(!courtHomography||courtCorners.length!==4)return true;
+  const xs=courtCorners.map(p=>p.x),ys=courtCorners.map(p=>p.y);
+  if(pt.x<Math.min(...xs)-margin||pt.x>Math.max(...xs)+margin||pt.y<Math.min(...ys)-margin||pt.y>Math.max(...ys)+margin)return false;
+  let inside=false;for(let i=0,j=courtCorners.length-1;i<courtCorners.length;j=i++){const a=courtCorners[i],b=courtCorners[j];if(((a.y>pt.y)!==(b.y>pt.y))&&(pt.x<(b.x-a.x)*(pt.y-a.y)/(b.y-a.y+1e-9)+a.x))inside=!inside;}
+  return inside||((pt.x>=Math.min(...xs)-margin&&pt.x<=Math.max(...xs)+margin)&&(pt.y>=Math.min(...ys)-margin&&pt.y<=Math.max(...ys)+margin));
+}
+
 function processFrame(now){
   if(!landmarker||(!stream&&!uploadedVideoMode)||!video.videoWidth){rafId=null;return;}
   if(video.currentTime!==lastVideoTime&&!processing){
@@ -1139,20 +1136,22 @@ function processFrame(now){
       }else{
         detections=poseCandidates.map(p=>({...p,score:.0,box:null}));
       }
+      // Keep pose-only candidates too: skeleton rendering must not depend on a person-box match.
+      for(const p of poseCandidates){if(!detections.some(d=>d.landmarks===p.landmarks))detections.push({...p,score:.0,box:null});}
+      if(courtHomography)detections=detections.filter(d=>pointInCourt(d.hip,.09));
       const maxPlayers=$("mode").value==="singles"?2:4;
       detections.sort((a,b)=>a.hip.y-b.hip.y);
       updateTracks(detections.slice(0,maxPlayers));
       if(uploadedVideoMode){const p1=activeTracks().find(t=>t.slot===1);if(p1&&selectedId!==p1.id&&!activeTracks().some(t=>t.id===selectedId)){selectedId=p1.id;selectedLastHip=null;}}
       updateAppearanceTracks();
-      // Automatically use the first acquired track as the default analysis target; this is not identity recognition.
-      if(selectedId===null && activeTracks().length){selectedId=activeTracks()[0].id;selectedLastHip=null;}
       drawAll();renderPlayers();
       if(running){
-        processSelectedPlayer(now);
+        if(uploadedVideoMode)processSelectedPlayer(now);
         if(now-lastReplayCapture>=200){
-          const snapshot=activeTracks().map(t=>({id:uploadedVideoMode?(t.slot||t.id):t.id,x:Number(t.hip.x.toFixed(4)),y:Number(t.hip.y.toFixed(4)),selected:t.id===selectedId}));
-          replayFrames.push({t:Number(((now-sessionStart)/1000).toFixed(2)),players:snapshot});
-          lastReplayCapture=now;
+          const elapsed=Number(((now-sessionStart)/1000).toFixed(2));
+          const snapshot=activeTracks().map(t=>{const pid=uploadedVideoMode?(t.slot||t.id):(t.slot||t.id);const point={id:pid,x:Number(t.hip.x.toFixed(4)),y:Number(t.hip.y.toFixed(4)),selected:uploadedVideoMode&&t.id===selectedId};
+            (playerHistories[pid]||(playerHistories[pid]=[])).push({t:elapsed,x:point.x,y:point.y,trackId:t.id});return point;});
+          replayFrames.push({t:elapsed,players:snapshot});lastReplayCapture=now;
         }
       }
       frameTimes.push(now);if(frameTimes.length>20)frameTimes.shift();
@@ -1167,7 +1166,8 @@ function processFrame(now){
 }
 $("startBtn").addEventListener("click",()=>{
   if(!landmarker)return;
-  running=true;sessionStart=performance.now();lastVideoTime=-1;
+  if(!uploadedVideoMode&&!courtHomography){status("Calibrate the court before recording",false);$("calibrationHelp").textContent="Mark all four court corners first. Detection remains active while you calibrate.";return;}
+  running=true;sessionStart=performance.now();lastVideoTime=-1;playerHistories={};postMatchChosenId=null;lastHistoryCapture=0;
   lastSessionDuration=0;dashboardPreview=false;recommendationPreview=false;
   movementTotal=0;selectedLastHip=null;selectedSamples=0;records=[];frameTimes=[];replayFrames=[];lastReplayCapture=0;liveTrail=[];
   footworkSamples=[];lastFootworkSampleAt=0;footworkIsDemo=false;renderFootwork();
@@ -1177,7 +1177,7 @@ $("startBtn").addEventListener("click",()=>{
   $("time").textContent="00:00";$("pose").textContent="—";$("movement").textContent="0.0";$("fps").textContent="—";
   $("startBtn").disabled=true;$("stopBtn").disabled=false;$("downloadBtn").disabled=true;
   status("Training live",true);renderCoachHome();
-  $("observation").textContent="Collecting movement samples for the selected player. Select yourself from the video or player list.";
+  $("observation").textContent="Collecting movement samples for the selected player. All visible players are being tracked independently.";
   timer=setInterval(()=>$("time").textContent=fmt((performance.now()-sessionStart)/1000),250);
   if(!rafId)rafId=requestAnimationFrame(processFrame);
 });
@@ -1359,7 +1359,8 @@ async function saveCurrentMatch(){
     sourceName:uploadedVideoMode?uploadedVideoName:"",
     durationSeconds:lastSessionDuration,
     frameCount:replayFrames.length,
-    selectedPlayerId:selectedId,
+    selectedPlayerId:postMatchChosenId||selectedId,
+    playerHistories:Object.fromEntries(Object.entries(playerHistories).map(([id,pts])=>[id,pts.map(p=>({...p}))])),
     frames:replayFrames.map(f=>({t:f.t,players:f.players.map(p=>({id:p.id,x:p.x,y:p.y,selected:!!p.selected}))})),
     records:records.map(r=>({...r})),
     courtCorners:courtCorners.map(p=>({x:p.x,y:p.y})),
@@ -1403,6 +1404,28 @@ function exportAllSavedMatches(){
   }).catch(e=>{$("libraryStatus").textContent="Export failed: "+e.message;});
 }
 
+function showPostMatchChooser(){
+  if(uploadedVideoMode)return;
+  const result=$("matchAnalysisResult");if(!result)return;
+  const ids=Object.keys(playerHistories).filter(id=>playerHistories[id]?.length).sort((a,b)=>Number(a)-Number(b));
+  const wrap=document.createElement("div");wrap.id="postMatchPlayerChooser";wrap.style.cssText="margin:12px 0;padding:12px;border:1px solid var(--line);border-radius:12px";
+  wrap.innerHTML='<strong>Which player were you?</strong><div class="note" style="margin:5px 0 10px">Choose your tracking label to calculate your movement analysis. IDs can occasionally switch when players cross or overlap.</div><div class="toolbar" id="postMatchPlayerButtons"></div><div class="note" id="postMatchSelectionStatus">Select a player to analyse the match.</div>';
+  result.prepend(wrap);const buttons=wrap.querySelector("#postMatchPlayerButtons");
+  ids.forEach(id=>{const b=document.createElement("button");b.textContent="P"+id+" · "+playerHistories[id].length+" samples";b.addEventListener("click",()=>selectPostMatchPlayer(Number(id)));buttons.appendChild(b);});
+  if(!ids.length)wrap.querySelector("#postMatchSelectionStatus").textContent="No player histories were captured. Check camera visibility and try again.";
+}
+function selectPostMatchPlayer(id){
+  postMatchChosenId=id;selectedId=id;
+  replayFrames.forEach(f=>f.players.forEach(p=>p.selected=Number(p.id)===id));
+  records=(playerHistories[id]||[]).map(p=>({elapsed:p.t.toFixed(2),player_id:id,hip_x:p.x.toFixed(4),hip_y:p.y.toFixed(4)}));
+  selectedSamples=records.length;$("downloadBtn").disabled=records.length===0;movementTotal=0;selectedLastHip=null;liveTrail=[];footworkSamples=[];
+  heatCounts=Array(18).fill(0);previousBaseDistance=null;recoveryReturns=0;recoveryTowards=0;recoveryAway=0;
+  (playerHistories[id]||[]).forEach((p,i)=>{const q=mapToCourt({x:p.x,y:p.y});if(!q)return;footworkSamples.push({x:q.x,y:q.y,t:p.t});addHeatSample(q);if(i){const prev=playerHistories[id][i-1];const d=Math.hypot(p.x-prev.x,p.y-prev.y);if(d<.12)movementTotal+=d;}});
+  footworkIsDemo=false;dashboardPreview=false;recommendationPreview=false;renderFootwork();renderHeatmap();renderDashboard();renderRecommendations();
+  $("movement").textContent=(movementTotal*100).toFixed(1);$("pose").textContent="Selected after match";
+  const msg=$("postMatchSelectionStatus");if(msg)msg.textContent="P"+id+" selected. Your replay and movement summary now use this player's recorded history.";
+  $("analyseMatchBtn").textContent="Analyse P"+id+" Match";analyseCapturedMatch();drawReplayFrame(replayIndex);
+}
 function showReplay(){
   const panel=$('matchReplayPanel');if(!panel)return;panel.hidden=false;
   if(!replayFrames.length){$('replaySummary').textContent='No player-position samples captured. Try a longer session with visible players.';return;}
@@ -1412,6 +1435,7 @@ function showReplay(){
   $('replaySeek').oninput=e=>{replayIndex=Number(e.target.value);drawReplayFrame(replayIndex);};
   $('replayPlay').onclick=()=>{if(replayTimer)clearInterval(replayTimer);$('replayPlay').disabled=true;$('replayPause').disabled=false;replayTimer=setInterval(()=>{replayIndex++;if(replayIndex>=replayFrames.length){clearInterval(replayTimer);replayTimer=null;$('replayPlay').disabled=false;$('replayPause').disabled=true;replayIndex=0;}drawReplayFrame(replayIndex);},200);};
   $('replayPause').onclick=()=>{if(replayTimer)clearInterval(replayTimer);replayTimer=null;$('replayPlay').disabled=false;$('replayPause').disabled=true;};
+  if(!uploadedVideoMode)showPostMatchChooser();
   panel.scrollIntoView({behavior:'smooth',block:'start'});
 }
 function stopSession(){
@@ -1827,8 +1851,9 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
  <div id="selfieCaptureBox" hidden style="margin-top:8px"><video id="selfieCaptureVideo" autoplay playsinline muted style="width:100%;max-height:160px;object-fit:contain;background:#05090c;border-radius:8px"></video><div class="identity-actions"><button id="takeSelfieSnapshot" class="primary" type="button">Take selfie reference</button><button id="cancelSelfieSnapshot" type="button">Cancel</button></div></div>
  <div class="note identity-explain">Appearance matching is experimental: the app compares clothing-colour features from each saved reference with detected player crops. It may confuse similar outfits or lose identity during crossings. Confirm all labels before recording.</div>
  </div></details>`;
- // Mount briefly so existing event wiring can resolve its controls; it is moved below the camera before rendering.
- const stageEl=$('stage');if(stageEl)stageEl.appendChild(identityPanel);
+ // Place player setup directly over the camera canvas, not above/below the camera section.
+ const stageEl=$('stage');
+ if(stageEl){stageEl.appendChild(identityPanel);identityPanel.hidden=true;}
 
  // Experimental local appearance descriptor: coarse HSV clothing-colour histogram.
  // This is a lightweight heuristic, not a trained person-ReID neural network.
@@ -1871,17 +1896,12 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
    appearanceTrackMap=map;
    const statusEl=$('identityStatus');if(statusEl&&refs.length){const matched=Object.keys(map).length;statusEl.textContent='Appearance matching: '+matched+'/'+refs.length+' reference(s) matched. Check player labels; similar clothing can cause mismatches.';}
  }
- function identityLabelForTrack(t,index){
-   if(t.manualSlot)return "P"+t.manualSlot;
-   if(uploadedVideoMode)return "P"+(t.slot||index+1);
-   const found=Object.entries(appearanceTrackMap).find(([id,trackId])=>trackId===t.id);
-   return found?'P'+found[0]:'P'+(index+1);
- }
+ function identityLabelForTrack(t,index){return 'P'+(t.slot||t.manualSlot||index+1);}
  const identityNames={1:'YOU',2:'P2',3:'P3',4:'P4'};
  const identityRefs={}; const identityAppearance={}; let appearanceTrackMap={}; let identitySelfieStream=null;
  try{const saved=JSON.parse(localStorage.getItem('badmintonPlayerNamesV1')||'{}');for(let i=1;i<=4;i++)if(saved[i])identityNames[i]=saved[i];}catch(e){}
  function playerName(id){return identityNames[id]||('P'+id)}
- for(let i=1;i<=4;i++){const input=identityPanel.querySelector('#identityName'+i);if(!input){console.warn('Player identity input missing:',i);continue;}input.value=identityNames[i];input.addEventListener('input',()=>{identityNames[i]=input.value.trim()||('P'+i);try{localStorage.setItem('badmintonPlayerNamesV1',JSON.stringify(identityNames));}catch(e){};renderPlayers();drawAll();});}
+ for(let i=1;i<=4;i++){const input=$('identityName'+i);if(input){input.value=identityNames[i];input.addEventListener('input',()=>{identityNames[i]=input.value.trim()||('P'+i);try{localStorage.setItem('badmintonPlayerNamesV1',JSON.stringify(identityNames));}catch(e){};renderPlayers();drawAll();});}}
  $('captureSelfieRef').addEventListener('click',async()=>{
    try{
     if(!navigator.mediaDevices?.getUserMedia)throw new Error('Camera access requires HTTPS.');
@@ -1914,7 +1934,6 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
  const playersPanel=$('players')?.closest('.panel');
  const calibration=$('courtCalibrationPanel');
   if(cameraPanel)live.appendChild(cameraPanel);
- live.appendChild(identityPanel);
 
  // Live player setup: choose YOU-only default or explicitly manage all four players.
  const setup=document.createElement('section');setup.className='panel';setup.id='livePlayerSetupPanel';
@@ -1992,7 +2011,7 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
  });
  renderMatchLibrary();
 
- const record=document.createElement('section');record.className='panel';record.innerHTML='<div id="recordBar"><div><strong style="font-size:17px">Match recording</strong><div class="note" id="recordState">Camera and at least one detected player required before recording.</div></div><div class="toolbar"><span class="metric"><span class="label">TIME</span><span class="value" id="quickTimer">00:00</span></span><button id="recordStart" class="primary" disabled>● START RECORDING</button><button id="recordStop" disabled>STOP</button></div></div><div class="note" style="margin-top:10px">P1–P4 slots are automatic visual labels. Live mode: select YOU or set all players. Uploaded videos: P1–P4 are assigned automatically; P1 feeds the movement dashboard.</div>';
+ const record=document.createElement('section');record.className='panel';record.innerHTML='<div id="recordBar"><div><strong style="font-size:17px">Match recording</strong><div class="note" id="recordState">Enable camera and calibrate the court to unlock recording.</div></div><div class="toolbar"><span class="metric"><span class="label">TIME</span><span class="value" id="quickTimer">00:00</span></span><button id="recordStart" class="primary" disabled>● START RECORDING</button><button id="recordStop" disabled>STOP</button></div></div><div class="note" style="margin-top:10px">Detection runs before recording. P1–P4 are temporary tracking labels; after a live match, choose which player was you.</div>';
  live.appendChild(record);
  const replay=document.createElement('section');replay.className='panel';replay.id='matchReplayPanel';replay.hidden=true;
  replay.innerHTML='<div class="toolbar" style="justify-content:space-between"><div><strong style="font-size:18px">Match Replay</strong><div class="note" id="replaySummary">Processing recorded player positions…</div></div><button id="exportReplay">Export replay JSON</button></div><div style="max-width:820px;margin:12px auto;background:#123f35;border:2px solid #a9d7c5;border-radius:12px;padding:12px"><canvas id="replayCourt" width="800" height="400" style="display:block;width:100%;height:auto"></canvas></div><input id="replaySeek" type="range" min="0" max="0" value="0" step="1" style="width:100%"><div class="toolbar" style="justify-content:center"><button id="replayPlay">▶ Play replay</button><button id="replayPause" disabled>Ⅱ Pause</button></div><div class="note">Reconstructed from detected player positions, not camera footage. Missed detections and temporary ID switches may appear.</div>';
@@ -2013,7 +2032,7 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
  quickSessionType.addEventListener("change",()=>{currentSessionType=quickSessionType.value;});
  quickMode.addEventListener('change',()=>{oldMode.value=quickMode.value;oldMode.dispatchEvent(new Event('change',{bubbles:true}));sync();});
  $('quickQuality').addEventListener('change',e=>quality.value=e.target.value);
- $('quickCamera').addEventListener('click',()=>{$('cameraBtn').click();$('quickHint').textContent='Camera requested. Allow access. Player detection will start automatically after the pose model loads; wait for P1–P4 to appear before selecting yourself.';});
+ $('quickCamera').addEventListener('click',()=>{$('cameraBtn').click();$('quickHint').textContent='Camera requested. Allow access. Player dots and skeleton lines will appear automatically when the model is ready.';});
  $('quickCalibrate').addEventListener('click',()=>{
     const details=$('courtCalibrationPanel')?.closest('details');if(details)details.open=true;
     $('calibrateBtn').click();
@@ -2033,7 +2052,7 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
    const maxPlayers=quickMode.value==='singles'?2:4;
    for(let i=1;i<=4;i++){const card=$('identityName'+i)?.closest('.identity-card');if(card)card.hidden=i>maxPlayers;}
    $('cmCount').textContent=detected+' / '+maxPlayers;
-   $('cmStatus').textContent=!hasCamera?'Waiting for rear camera…':(detected===0?'Camera active · Looking for players…':detected+' player'+(detected===1?'':'s')+' detected · Select yourself below');
+   $('cmStatus').textContent=!hasCamera?'Waiting for rear camera…':(detected===0?'Camera active · Looking for players…':detected+' player'+(detected===1?'':'s')+' detected · Tracking automatically');
    const cm=$('cmPlayers');cm.innerHTML='';
    const liveTracks=activeTracks().slice(0,maxPlayers);
    for(let i=1;i<=maxPlayers;i++){
@@ -2046,14 +2065,14 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
    if(canvasSlots){canvasSlots.innerHTML='';for(let i=1;i<=maxPlayers;i++){const present=!!liveTracks[i-1];const chip=document.createElement('button');chip.type='button';chip.className='canvas-player-slot '+(present?'':'missing');const mappedId=Object.entries(appearanceTrackMap).find(([pid,tid])=>tid===actual?.id)?.[0];chip.textContent=(mappedId?'P'+mappedId:'P'+i)+(present?' · Detected':' · Waiting');chip.title='Open P'+i+' player setup';chip.addEventListener('click',()=>{const details=$('identityDetails');if(details)details.open=true;$('identityName'+i)?.focus({preventScroll:true});$('playerIdentityPanel')?.scrollIntoView({block:'nearest',behavior:'smooth'});});canvasSlots.appendChild(chip);}}
    $('canvasDetectCount').textContent=liveTracks.length+' / '+maxPlayers+' detected';
 
-   const selfieMonitor=$('selfieMonitor');if(selfieMonitor?.style.display==='block'&&$('selfieStatus'))$('selfieStatus').textContent=selected?'YOU SELECTED':'P'+detected+' DETECTED';
-   $('recordStart').disabled=!hasCamera||detected===0||running;
+   if($('selfieMonitor').style.display==='block')$('selfieStatus').textContent=selected?'YOU SELECTED':'P'+detected+' DETECTED';
+   $('recordStart').disabled=!hasCamera||!courtHomography||running;
    $('recordStop').disabled=!running;
    $('recordStart').classList.toggle('recording',running);
    $('recordStart').textContent=running?'● RECORDING':'● START RECORDING';
-   $('recordState').textContent=running?'Recording player positions for a lightweight replay.':(!hasCamera?'Enable camera to begin.':(!selected?'Waiting for the first detected player (assigned as P1 for analysis).':'Player selected. Ready to record.'));
+   $('recordState').textContent=running?'Recording all detected player positions.':(!hasCamera?'Enable camera to begin.':(!courtHomography?'Calibrate all four court corners to unlock recording.':'Ready. Recording can start even if fewer than four players are detected.'));
    $('quickTimer').textContent=$('time')?.textContent||'00:00';
-   if(hasCamera)$('quickHint').textContent='Camera is active. Player slots are assigned automatically. Check that the markers match the people on court.';
+   if(hasCamera)$('quickHint').textContent='Camera is active. Colourful pose dots and skeleton lines should track visible players automatically.';
  }
  setInterval(sync,500);
  // Hide the long stage-by-stage dashboard unless the user deliberately opens it.
