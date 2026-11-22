@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#101820">
 <link rel="icon" href="data:,">
-<title>Badminton AI Coach — Stage 17.8 · Live & Video Analysis</title>
+<title>Badminton AI Coach — Stage 17.9 · Live & Video Analysis</title>
 <style>
 :root{color-scheme:dark;--bg:#101820;--panel:#182630;--muted:#9fb0bb;--accent:#63e6be;--line:#30434f}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f4f7f8;font:15px system-ui,-apple-system,Segoe UI,sans-serif}
@@ -997,6 +997,10 @@ function updateServeGesture(t,now){
 }
 function drawPlayerArrow(t,index){
   const color=COLORS[((t.slot||index+1)-1)%COLORS.length],head=getHeadPoint(t);
+  // Make detections unmistakable in live preview and uploaded-video analysis.
+  ctx.save();ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=Math.max(4,canvas.width/360);
+  if(t.box){ctx.setLineDash([Math.max(7,canvas.width/120),Math.max(4,canvas.width/220)]);ctx.strokeRect(t.box.x*canvas.width,t.box.y*canvas.height,t.box.w*canvas.width,t.box.h*canvas.height);ctx.setLineDash([]);}
+  const hx=t.hip.x*canvas.width,hy=t.hip.y*canvas.height;ctx.beginPath();ctx.arc(hx,hy,Math.max(9,canvas.width/105),0,Math.PI*2);ctx.fill();ctx.strokeStyle="#fff";ctx.lineWidth=Math.max(2,canvas.width/800);ctx.stroke();ctx.restore();
   const x=head.x*canvas.width,y=Math.max(18,head.y*canvas.height-Math.max(24,canvas.height*.055));
   const label='P'+(t.manualSlot||t.slot||index+1);
   ctx.save();ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=Math.max(3,canvas.width/420);ctx.lineCap='round';
@@ -1486,9 +1490,11 @@ async function saveCurrentMatch(){
   const statusEl=$("libraryStatus");
   if(!replayFrames.length){
     if(statusEl)statusEl.textContent="Nothing to save: no player-position samples were captured in this session.";
+    if($("replaySaveStatus"))$("replaySaveStatus").textContent="Not saved: no player positions were captured. Export replay JSON is still available for diagnostics.";
     await renderMatchLibrary();return;
   }
   if(statusEl)statusEl.textContent="Saving match to this device…";
+  if($("replaySaveStatus"))$("replaySaveStatus").textContent="Saving captured player positions to this browser…";
   const savedAt=Date.now();
   const match={
     id:"match-"+savedAt+"-"+Math.random().toString(36).slice(2,8),
@@ -1509,9 +1515,11 @@ async function saveCurrentMatch(){
   try{
     await putSavedMatch(match);
     if(statusEl)statusEl.textContent="✓ Match saved on this device · "+formatSavedDate(savedAt);
+    if($("replaySaveStatus"))$("replaySaveStatus").textContent="✓ Match auto-saved to this browser · "+formatSavedDate(savedAt);
     await renderMatchLibrary();
   }catch(e){
     if(statusEl)statusEl.textContent="Could not save match: "+(e.message||e)+". Export the replay JSON as a backup.";
+    if($("replaySaveStatus"))$("replaySaveStatus").textContent="Auto-save failed: "+(e.message||e)+". Export replay JSON as a backup.";
     console.error("Match Library save failed",e);
   }
 }
@@ -1521,6 +1529,7 @@ async function loadSavedMatch(id){
     const matches=await getSavedMatches(),match=matches.find(m=>m.id===id);
     if(!match)throw new Error("Saved match was not found.");
     replayFrames=match.frames||[];
+    playerHistories=match.playerHistories||{};
     currentSessionType=match.sessionType||"training";
     lastSessionDuration=Number(match.durationSeconds)||0;
     if($("quickSessionType"))$("quickSessionType").value=currentSessionType;
@@ -1545,8 +1554,8 @@ function exportAllSavedMatches(){
 }
 
 function showPostMatchChooser(){
-  if(uploadedVideoMode)return;
   const result=$('matchAnalysisResult');if(!result)return;
+  $('postMatchPlayerChooser')?.remove();
   const ids=Object.keys(playerHistories).filter(id=>playerHistories[id]?.length).sort((a,b)=>Number(a)-Number(b));
   const wrap=document.createElement('div');wrap.id='postMatchPlayerChooser';wrap.style.cssText='margin:12px 0;padding:14px;border:1px solid var(--line);border-radius:12px';
   wrap.innerHTML='<strong style="font-size:18px">Step 2 · Which player were you?</strong><div class="note" style="margin:5px 0 10px">Select your P1–P4 tracking label. Then analyse the recorded positions as a flat 2D court map.</div><div class="toolbar" id="postMatchPlayerButtons"></div><div class="note" id="postMatchSelectionStatus" style="margin-top:8px">Choose your player to continue.</div><button id="runFlatAnalysis" class="primary" disabled style="margin-top:10px">Analyse selected player</button>';
@@ -1570,17 +1579,18 @@ function selectPostMatchPlayer(id){
 
 function showReplay(){
   const panel=$('matchReplayPanel');if(!panel)return;panel.hidden=false;
-  if(!replayFrames.length){$('replaySummary').textContent='No player positions were detected during this recording. Check the camera framing and player visibility before the next session.';return;}
+  $('exportReplay').disabled=false;
+  $('exportReplay').onclick=()=>{const payload={format:'Badminton AI Coach position replay',version:1,session_type:currentSessionType,duration_seconds:lastSessionDuration,frames:replayFrames};const url=URL.createObjectURL(new Blob([JSON.stringify(payload)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='badminton-match-replay.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+  showPostMatchChooser();
+  if(!replayFrames.length){$('replaySummary').textContent='No replay frames were captured. You can still export a diagnostic JSON, but there is no player movement to replay. Check the camera framing and player visibility before recording again.';return;}
   $('replaySeek').max=String(replayFrames.length-1);replayIndex=0;drawReplayFrame(0);
   $('analyseMatchBtn').onclick=analyseCapturedMatch;
-  $('exportReplay').onclick=()=>{const payload={format:'Badminton AI Coach position replay',version:1,session_type:currentSessionType,duration_seconds:lastSessionDuration,frames:replayFrames};const url=URL.createObjectURL(new Blob([JSON.stringify(payload)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='badminton-match-replay.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
   $('replaySeek').oninput=e=>{replayIndex=Number(e.target.value);drawReplayFrame(replayIndex);};
   $('replayPlay').onclick=()=>{if(replayTimer)clearInterval(replayTimer);$('replayPlay').disabled=true;$('replayPause').disabled=false;replayTimer=setInterval(()=>{replayIndex++;if(replayIndex>=replayFrames.length){clearInterval(replayTimer);replayTimer=null;$('replayPlay').disabled=false;$('replayPause').disabled=true;replayIndex=0;}drawReplayFrame(replayIndex);},200);};
   $('replayPause').onclick=()=>{if(replayTimer)clearInterval(replayTimer);replayTimer=null;$('replayPlay').disabled=false;$('replayPause').disabled=true;};
-  if(!uploadedVideoMode)showPostMatchChooser();
   panel.scrollIntoView({behavior:'smooth',block:'start'});
 }
-function stopSession(){
+async function stopSession(){
   running=false;clearInterval(timer);
   if(uploadedVideoMode)video.pause();
   $("startBtn").disabled=!landmarker;$("stopBtn").disabled=true;
@@ -1593,7 +1603,7 @@ function stopSession(){
   $("observation").textContent=`Session: ${fmt(secs)}. Captured position samples for ${Object.keys(playerHistories).length} tracked player slot(s). Choose yourself below to analyse your movement.`;
   renderDashboard();
   showReplay();
-  saveCurrentMatch();
+  await saveCurrentMatch();
 }
 $("stopBtn").addEventListener("click",stopSession);
 $("downloadBtn").addEventListener("click",()=>{
@@ -2091,7 +2101,7 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
  upload.innerHTML=`<div class="toolbar" style="justify-content:space-between"><div><strong style="font-size:18px">Upload video for analysis</strong><div class="note">Choose a badminton video stored on your device. Processing stays in this browser.</div></div><span class="status">P1–P4 auto-detected</span></div>
   <input id="matchVideoFile" type="file" accept="video/*" style="display:block;width:100%;margin:12px 0;color:#dce7eb">
   <div class="toolbar"><button id="analyseUploadedVideo" class="primary" disabled>Analyse uploaded video</button><button id="clearUploadedVideo" disabled>Clear video</button><span id="uploadVideoStatus" class="note">No video selected.</span></div>
-  <div class="note" style="margin-top:9px">For uploaded videos, you do not need to identify yourself. The system labels up to four detected players P1–P4 automatically. P1 is used for the single-player movement dashboard; the replay stores positions for all detected players. IDs are temporary and may switch if players cross, overlap or leave the frame.</div>`;
+  <div class="note" style="margin-top:9px">The system labels up to four detected players P1–P4 automatically. After analysis stops, choose which detected player you want to review. IDs are temporary and may switch if players cross, overlap or leave the frame.</div>`;
  live.appendChild(upload);
  const fileInput=upload.querySelector('#matchVideoFile'),analyseBtn=upload.querySelector('#analyseUploadedVideo'),clearBtn=upload.querySelector('#clearUploadedVideo'),uploadStatus=upload.querySelector('#uploadVideoStatus');
  fileInput.addEventListener('change',()=>{
@@ -2159,8 +2169,8 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
  live.appendChild(record);
  // Keep the recording controls immediately beside the live camera, not buried below the library.
  if(monitor?.parentNode)monitor.parentNode.insertBefore(record,monitor);
- const replay=document.createElement('section');replay.className='panel';replay.id='matchReplayPanel';replay.hidden=true;
- replay.innerHTML='<div class="toolbar" style="justify-content:space-between"><div><strong style="font-size:18px">Match Replay</strong><div class="note" id="replaySummary">Processing recorded player positions…</div></div><button id="exportReplay">Export replay JSON</button></div><div style="max-width:820px;margin:12px auto;background:#123f35;border:2px solid #a9d7c5;border-radius:12px;padding:12px"><canvas id="replayCourt" width="800" height="400" style="display:block;width:100%;height:auto"></canvas></div><input id="replaySeek" type="range" min="0" max="0" value="0" step="1" style="width:100%"><div class="toolbar" style="justify-content:center"><button id="replayPlay">▶ Play replay</button><button id="replayPause" disabled>Ⅱ Pause</button></div><div class="note">Reconstructed from detected player positions, not camera footage. Missed detections and temporary ID switches may appear.</div>';
+  const replay=document.createElement('section');replay.className='panel';replay.id='matchReplayPanel';replay.hidden=true;
+ replay.innerHTML='<div class="toolbar" style="justify-content:space-between"><div><strong style="font-size:18px">Match Replay</strong><div class="note" id="replaySummary">Processing recorded player positions…</div><div class="note" id="replaySaveStatus">A match auto-saves here when you stop, if player positions were captured.</div></div><button id="exportReplay">Export replay JSON</button></div><div style="max-width:820px;margin:12px auto;background:#123f35;border:2px solid #a9d7c5;border-radius:12px;padding:12px"><canvas id="replayCourt" width="800" height="400" style="display:block;width:100%;height:auto"></canvas></div><input id="replaySeek" type="range" min="0" max="0" value="0" step="1" style="width:100%"><div class="toolbar" style="justify-content:center"><button id="replayPlay">▶ Play replay</button><button id="replayPause" disabled>Ⅱ Pause</button></div><div class="note">Reconstructed from detected player positions, not camera footage. Missed detections and temporary ID switches may appear.</div>';
  replay.insertAdjacentHTML('beforeend',`
  <div class="panel" style="margin-top:14px;background:#13232c">
   <div class="toolbar" style="justify-content:space-between">
