@@ -4,8 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#101820">
+<meta name="application-version" content="18.0">
+<meta name="application-stage" content="18">
 <link rel="icon" href="data:,">
-<title>Badminton AI Coach — Stage 17.9 · Live & Video Analysis</title>
+<title>Badminton AI Coach — V18 · Live Player & Shuttle Tracking</title>
 <style>
 :root{color-scheme:dark;--bg:#101820;--panel:#182630;--muted:#9fb0bb;--accent:#63e6be;--line:#30434f}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f4f7f8;font:15px system-ui,-apple-system,Segoe UI,sans-serif}
@@ -167,12 +169,12 @@ header{position:sticky;top:0;z-index:30;background:#101b23eF;backdrop-filter:blu
 </head>
 <body>
 <header>
-  <div><h1>🏸 Badminton AI Coach</h1><div class="sub">Stage 17.6 · Record → Identify → Analyse</div></div>
+  <div><h1>🏸 Badminton AI Coach</h1><div class="sub">V18 · Record → Track Players & Shuttle → Identify → Analyse</div></div>
   <div class="status"><span id="liveDot" class="dot"></span><span id="statusText">Not connected</span></div>
 </header>
 <div id="quickStart">
  <div class="qs-card">
-  <div class="qs-head"><div><div class="qs-title">Ready for your game?</div><div class="qs-muted">Choose your session type and game format. Player slots will appear automatically on the camera.</div></div><span class="stage910Pill">STAGE 17.1 · LIVE MODE</span></div>
+  <div class="qs-head"><div><div class="qs-title">Ready for your game?</div><div class="qs-muted">Choose your session type and game format. Player slots will appear automatically on the camera.</div></div><span class="stage910Pill">V18 · LIVE MODE</span></div>
   <div class="qs-field"><label for="quickSessionType">Session type</label><select id="quickSessionType"><option value="training" selected>Training</option><option value="match">Match</option><option value="social">Social Game</option></select><label for="quickGameMode">Game format</label><select id="quickGameMode"><option value="singles">Singles · up to 2 players</option><option value="doubles" selected>Doubles · up to 4 players</option></select><label for="quickQuality">Processing</label><select id="quickQuality"><option value="640">Balanced</option><option value="480">Low</option><option value="960">Higher detail</option></select></div>
   <div class="qs-actions"><button id="quickCamera" class="primary">1 · Enable camera & detect players</button><button id="quickCalibrate">Calibrate court</button><button id="showAdvancedTop">Advanced / Demo tools</button></div>
   <div class="qs-muted" id="quickHint" style="margin-top:10px">Position your phone behind the baseline in landscape orientation. Keep all players and the full court visible.</div>
@@ -253,7 +255,7 @@ header{position:sticky;top:0;z-index:30;background:#101b23eF;backdrop-filter:blu
 <div id="advancedArea" hidden><button id="advancedToggle" type="button">Advanced / Demo tools · Show or hide</button><main id="advancedMain">
   <section class="panel" id="coachHome">
     <div class="toolbar" style="justify-content:space-between">
-      <div><h2>Stage 17.3 · Badminton AI Coach</h2><p class="note">Your session hub for camera setup, court mapping and movement analysis. Shuttle and rally labs are synthetic demonstrations.</p></div>
+      <div><h2>Stage 17.3 · Badminton AI Coach</h2><p class="note">Your session hub for camera setup, court mapping, player tracking and experimental live shuttle tracking.</p></div>
       <span class="stage910Pill" id="coachReadiness">SETUP NEEDED</span>
     </div>
     <div class="metrics">
@@ -378,7 +380,7 @@ header{position:sticky;top:0;z-index:30;background:#101b23eF;backdrop-filter:blu
 
   <section class="panel" id="stage155Panel">
     <div class="toolbar" style="justify-content:space-between">
-      <div><h2>Stage 15.5 · Real shuttlecock detector (TrackNetV3)</h2><p class="note">Experimental local-video test. Select a short match clip, load the ONNX model, then run an 8-frame tracking window. Your video stays in this browser.</p></div>
+      <div><h2>Stage 15.5 · TrackNetV3 shuttle detector</h2><p class="note">Experimental TrackNetV3 detector. V18 loads it during recording and samples live camera frames in the background; this panel remains available for manual clip tests.</p></div>
       <span class="stage910Pill" id="tracknetBadge">MODEL NOT LOADED</span>
     </div>
     <div class="stage910Controls">
@@ -398,12 +400,12 @@ header{position:sticky;top:0;z-index:30;background:#101b23eF;backdrop-filter:blu
     <canvas id="tracknetCanvas" class="stage910Canvas" width="640" height="360" aria-label="TrackNetV3 detected shuttlecock positions"></canvas>
     <p id="tracknetMessage" class="note">Choose a short video clip first. Start with 5–15 seconds, a fixed camera and the whole court visible.</p>
     <p class="note">Model source: <a href="https://huggingface.co/jinergenkai/badminton-analysis-web" target="_blank" rel="noopener" style="color:#63e6be">Hugging Face · badminton-analysis-web</a>. The model card documents TrackNetV3 ONNX heatmaps, an input of median background plus 8 RGB frames, and browser inference through ONNX Runtime Web. The first model download may be large. Only the model is downloaded; this app does not upload your video.</p>
-    <div class="wizCallout">Experimental integration: the detector's output heatmaps are decoded into candidate coordinates. This is not yet a validated tracker. We still need to verify the model's input dimensions, preprocessing, confidence calibration and accuracy on your own footage before Stages 16–17.</div>
+    <div class="wizCallout">Experimental integration: the model's heatmap peaks are stored as candidate shuttle positions. Raw peak scores are not calibrated probabilities, and false detections or missed frames are possible. Treat the trajectory as experimental until checked against your footage.</div>
   </section>
 
   <section class="panel" id="shuttleLabPanel">
     <div class="toolbar" style="justify-content:space-between">
-      <div><h2>Stage 9 · Shuttlecock detection & tracking lab</h2><p class="note">Explore how a detected shuttlecock position becomes a flight path. The current demo generates sample coordinates; it does not detect a real shuttlecock from the camera yet.</p></div>
+      <div><h2>Stage 9 · Shuttlecock detection & tracking lab</h2><p class="note">Explore how a detected shuttlecock position becomes a flight path. The Stage 9 trajectory remains a synthetic demonstration. Real shuttle detection is handled experimentally by the V18 TrackNetV3 live pipeline.</p></div>
       <span class="stage910Pill">SIMULATED DATA</span>
     </div>
     <div class="metrics">
@@ -567,13 +569,14 @@ header{position:sticky;top:0;z-index:30;background:#101b23eF;backdrop-filter:blu
       <li>Use landscape orientation, rear camera and a stable tripod or safe elevated surface.</li>
       <li>Good lighting helps. At long distances, pose landmarks may be less accurate.</li>
       <li>Video frames are processed locally in the browser and are not uploaded by this app. The AI runtime and pose model are downloaded from public hosting when needed.</li>
-      <li>Stage 9 uses synthetic shuttle trajectories. No YOLO or shuttle-specific real detector is integrated. Stage 10 shot labels are a rule-based demonstration, not real shot classification.</li>
+      <li>V18 includes experimental TrackNetV3 shuttle candidate tracking during live recording. It is not yet validated for every camera angle, lighting condition or frame rate. Stage 9 trajectories and Stage 10 shot labels remain demonstrations, not real shot classification.</li>
     </ul>
   </section>
 </main></div>
 <footer>Experimental prototype — not a certified sports measurement tool.</footer>
 
 <script type="module">
+/* V18.0 metadata: live multi-player tracking + experimental TrackNetV3 shuttle capture, replay and Match Library persistence. */
 import { PoseLandmarker, ObjectDetector, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
 
 const $ = id => document.getElementById(id);
@@ -585,6 +588,7 @@ let replayFrames=[], lastReplayCapture=0, replayTimer=null, replayIndex=0, liveT
 let frameTimes=[], movementTotal=0, records=[], processing=false, rafId=null;
 let tracks=[], nextId=1, selectedId=null, selectedLastHip=null, selectedSamples=0;
 let playerHistories={}, postMatchChosenId=null, lastHistoryCapture=0;
+let shuttleHistory=[];
 let calibrationMode=false, courtCorners=[], courtHomography=null, lastCourtPoint=null;
 let previousBaseDistance=null, recoveryReturns=0, recoveryTowards=0, recoveryAway=0;
 let footworkSamples=[],lastFootworkSampleAt=0,footworkIsDemo=false,lastSessionDuration=0,dashboardPreview=false,recommendationPreview=false;
@@ -844,6 +848,8 @@ $("cameraBtn").addEventListener("click",async()=>{
       if(!rafId)rafId=requestAnimationFrame(processFrame);
       $("fpsText").textContent="AI: detecting players";
     }
+    // Warm the shuttle model during camera setup; recording itself never waits for it.
+    ensureTracknetModel().catch(err=>{console.warn("TrackNet warm-up failed; player tracking remains available",err);});
   }catch(e){
     console.error("Camera setup failed",e);
     if(stream){
@@ -1013,6 +1019,8 @@ function drawPlayerArrow(t,index){
 function drawAll(){
   ctx.clearRect(0,0,canvas.width,canvas.height);drawCourt();
   if(liveTrail.length>1){ctx.save();ctx.beginPath();liveTrail.forEach((p,i)=>{const x=p.x*canvas.width,y=p.y*canvas.height;i?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.strokeStyle='#63e6be';ctx.lineWidth=4;ctx.lineCap='round';ctx.lineJoin='round';ctx.stroke();ctx.restore();}
+  // V18: experimental TrackNetV3 shuttle trajectory, normalized to the camera frame.
+  if(shuttleHistory.length){const recent=shuttleHistory.slice(-36);if(recent.length>1){ctx.save();ctx.beginPath();recent.forEach((p,i)=>{const x=p.x*canvas.width,y=p.y*canvas.height;i?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.strokeStyle='#ffd166';ctx.lineWidth=Math.max(2,canvas.width/500);ctx.setLineDash([7,5]);ctx.stroke();ctx.setLineDash([]);ctx.restore();}const q=recent[recent.length-1];ctx.save();ctx.beginPath();ctx.arc(q.x*canvas.width,q.y*canvas.height,Math.max(8,canvas.width/95),0,Math.PI*2);ctx.fillStyle='#ffcf4a';ctx.fill();ctx.lineWidth=3;ctx.strokeStyle='#fff';ctx.stroke();ctx.fillStyle='#111';ctx.font=`800 ${Math.max(11,canvas.width/75)}px system-ui`;ctx.textAlign='center';ctx.fillText('S',q.x*canvas.width,q.y*canvas.height+4);ctx.restore();}
   const drawer=new DrawingUtils(ctx),now=performance.now();
   activeTracks().forEach((t,index)=>{
     const color=COLORS[((t.slot||index+1)-1)%COLORS.length];
@@ -1276,12 +1284,15 @@ function processFrame(now){
       updateAppearanceTracks();
       drawAll();renderPlayers();
       if(running){
+        // V18: shuttle sampling runs independently; a slow/unavailable shuttle model never blocks player tracking.
+        tnCaptureLiveFrame(now);
         if(uploadedVideoMode)processSelectedPlayer(now);
         if(now-lastReplayCapture>=200){
           const elapsed=Number(((now-sessionStart)/1000).toFixed(2));
           const snapshot=activeTracks().map(t=>{const pid=t.slot||t.id;const point={id:pid,x:Number(t.hip.x.toFixed(4)),y:Number(t.hip.y.toFixed(4)),selected:uploadedVideoMode&&t.id===selectedId};
             (playerHistories[pid]||(playerHistories[pid]=[])).push({t:elapsed,x:point.x,y:point.y,trackId:t.id});return point;});
-          replayFrames.push({t:elapsed,players:snapshot});lastReplayCapture=now;
+          const shuttle=shuttleHistory.length?{x:shuttleHistory[shuttleHistory.length-1].x,y:shuttleHistory[shuttleHistory.length-1].y,score:shuttleHistory[shuttleHistory.length-1].score}:null;
+          replayFrames.push({t:elapsed,players:snapshot,shuttle});lastReplayCapture=now;
         }
       }
       frameTimes.push(now);if(frameTimes.length>20)frameTimes.shift();
@@ -1296,7 +1307,9 @@ function processFrame(now){
 }
 $("startBtn").addEventListener("click",()=>{
   if(!landmarker)return;
-  running=true;sessionStart=performance.now();lastVideoTime=-1;playerHistories={};postMatchChosenId=null;lastHistoryCapture=0;
+  running=true;sessionStart=performance.now();lastVideoTime=-1;playerHistories={};postMatchChosenId=null;lastHistoryCapture=0;shuttleHistory=[];tnResetLive();
+  // Load the shuttle model in the background. Player recording starts immediately even if this model fails.
+  ensureTracknetModel().catch(err=>{console.warn('V18 shuttle model unavailable; continuing player-only recording',err);tnSetLiveStatus('Shuttle model unavailable · player tracking continues');});
   lastSessionDuration=0;dashboardPreview=false;recommendationPreview=false;
   movementTotal=0;selectedLastHip=null;selectedSamples=0;records=[];frameTimes=[];replayFrames=[];lastReplayCapture=0;liveTrail=[];
   footworkSamples=[];lastFootworkSampleAt=0;footworkIsDemo=false;renderFootwork();
@@ -1332,6 +1345,14 @@ function drawReplayFrame(index){
     g.fillStyle=colors[(p.id-1)%4];g.beginPath();g.arc(x,y,11,0,Math.PI*2);g.fill();
     g.lineWidth=p.selected?4:2;g.strokeStyle=p.selected?'#ffffff':'rgba(255,255,255,.65)';g.stroke();
     g.fillStyle='#fff';g.font='bold 15px system-ui';g.fillText('P'+p.id+(p.selected?' YOU':''),x+13,y-9);
+  }
+  const shuttleFrames=replayFrames.slice(0,Math.max(0,index)+1).filter(f=>f.shuttle&&Number.isFinite(f.shuttle.x)&&Number.isFinite(f.shuttle.y));
+  if(shuttleFrames.length){
+    g.save();g.beginPath();shuttleFrames.forEach((f,i)=>{const sx=left+f.shuttle.y*courtW,sy=top+f.shuttle.x*courtH;i?g.lineTo(sx,sy):g.moveTo(sx,sy);});
+    g.strokeStyle='#ffd166';g.lineWidth=3;g.setLineDash([6,5]);g.stroke();g.setLineDash([]);
+    const last=shuttleFrames[shuttleFrames.length-1],sx=left+last.shuttle.y*courtW,sy=top+last.shuttle.x*courtH;
+    g.beginPath();g.arc(sx,sy,8,0,Math.PI*2);g.fillStyle='#ffd166';g.fill();g.lineWidth=2;g.strokeStyle='#fff';g.stroke();
+    g.fillStyle='#101820';g.font='bold 10px system-ui';g.textAlign='center';g.fillText('S',sx,sy+3);g.restore();
   }
   g.fillStyle='#fff';g.font='13px system-ui';g.fillText('Replay '+fmt(frame.t),12,22);
   g.fillText('FAR END',left+8,top-12);g.fillText('NEAR END',left+courtW-80,top-12);
@@ -1507,7 +1528,8 @@ async function saveCurrentMatch(){
     frameCount:replayFrames.length,
     selectedPlayerId:postMatchChosenId||selectedId,
     playerHistories:Object.fromEntries(Object.entries(playerHistories).map(([id,pts])=>[id,pts.map(p=>({...p}))])),
-    frames:replayFrames.map(f=>({t:f.t,players:f.players.map(p=>({id:p.id,x:p.x,y:p.y,selected:!!p.selected}))})),
+    shuttleHistory:shuttleHistory.map(p=>({...p})),
+    frames:replayFrames.map(f=>({t:f.t,players:f.players.map(p=>({id:p.id,x:p.x,y:p.y,selected:!!p.selected})),shuttle:f.shuttle?({...f.shuttle}):null})),
     records:records.map(r=>({...r})),
     courtCorners:courtCorners.map(p=>({x:p.x,y:p.y})),
     format:"Badminton AI Coach local match"
@@ -1530,6 +1552,7 @@ async function loadSavedMatch(id){
     if(!match)throw new Error("Saved match was not found.");
     replayFrames=match.frames||[];
     playerHistories=match.playerHistories||{};
+    shuttleHistory=match.shuttleHistory||[];
     currentSessionType=match.sessionType||"training";
     lastSessionDuration=Number(match.durationSeconds)||0;
     if($("quickSessionType"))$("quickSessionType").value=currentSessionType;
@@ -1580,7 +1603,7 @@ function selectPostMatchPlayer(id){
 function showReplay(){
   const panel=$('matchReplayPanel');if(!panel)return;panel.hidden=false;
   $('exportReplay').disabled=false;
-  $('exportReplay').onclick=()=>{const payload={format:'Badminton AI Coach position replay',version:1,session_type:currentSessionType,duration_seconds:lastSessionDuration,frames:replayFrames};const url=URL.createObjectURL(new Blob([JSON.stringify(payload)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='badminton-match-replay.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+  $('exportReplay').onclick=()=>{const payload={format:'Badminton AI Coach position replay',version:18,session_type:currentSessionType,duration_seconds:lastSessionDuration,frames:replayFrames,shuttleHistory};const url=URL.createObjectURL(new Blob([JSON.stringify(payload)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='badminton-match-replay.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
   showPostMatchChooser();
   if(!replayFrames.length){$('replaySummary').textContent='No replay frames were captured. You can still export a diagnostic JSON, but there is no player movement to replay. Check the camera framing and player visibility before recording again.';return;}
   $('replaySeek').max=String(replayFrames.length-1);replayIndex=0;drawReplayFrame(0);
@@ -1592,6 +1615,8 @@ function showReplay(){
 }
 async function stopSession(){
   running=false;clearInterval(timer);
+  // Let an in-flight TrackNet window finish before saving the match snapshot.
+  await tnDrainLiveShuttle(2500);
   if(uploadedVideoMode)video.pause();
   $("startBtn").disabled=!landmarker;$("stopBtn").disabled=true;
   const recordButton=document.getElementById("recordStart");if(recordButton){recordButton.disabled=!(stream&&video.videoWidth&&landmarker);recordButton.textContent="● START RECORDING";recordButton.classList.remove("recording");}
@@ -1875,7 +1900,7 @@ renderRallyAnalysis();
 
 // Stage 15.5: experimental TrackNetV3 ONNX local-video integration.
 // The video is read from a local file; no video frames are sent to a server.
-const tn = {ort:null, session:null, videoUrl:null, points:[], busy:false};
+const tn = {ort:null, session:null, videoUrl:null, points:[], busy:false, liveBuffer:[], liveLastCapture:0, liveInference:false, liveFrames:0, liveError:null, liveRunId:0};
 const tnCanvas=$("tracknetCanvas"), tnCtx=tnCanvas.getContext("2d");
 function tnStatus(message){$("tracknetMessage").textContent=message;}
 function tnDraw(points=[]){
@@ -1886,6 +1911,101 @@ function tnDraw(points=[]){
     points.forEach((p,i)=>{g.beginPath();g.fillStyle="#ff6b6b";g.arc(p.x*w,p.y*h,4,0,Math.PI*2);g.fill();});}
 }
 function tnVideoReady(){const v=$("tracknetVideoPreview");return v.readyState>=2&&v.videoWidth>0&&v.videoHeight>0;}
+function tnSetLiveStatus(message){const el=$("shuttleLiveStatus");if(el)el.textContent="Shuttle tracking: "+message;}
+function tnResetLive(){tn.liveRunId++;tn.liveBuffer=[];tn.liveLastCapture=0;tn.liveInference=false;tn.liveFrames=0;tn.liveError=null;tnSetLiveStatus("model loading in background…");}
+async function ensureTracknetModel(){
+  if(tn.session)return tn.session;
+  if(tn.modelPromise)return tn.modelPromise;
+  tn.modelPromise=(async()=>{
+    tnSetLiveStatus("loading TrackNetV3 model (first load may take a while)…");
+    tn.ort=tn.ort||await import("https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.webgpu.min.mjs");
+    const variant=$("tracknetVariant")?.value||"fp32";
+    const modelUrl=`https://huggingface.co/jinergenkai/badminton-analysis-web/resolve/main/tracknet3_${variant}.onnx`;
+    try{tn.session=await tn.ort.InferenceSession.create(modelUrl,{executionProviders:["webgpu","wasm"],graphOptimizationLevel:"all"});}
+    catch(firstError){console.warn("TrackNet WebGPU unavailable; retrying WASM",firstError);tn.session=await tn.ort.InferenceSession.create(modelUrl,{executionProviders:["wasm"],graphOptimizationLevel:"all"});}
+    $("tracknetModelState").textContent="Loaded · "+(tn.session.handler?.constructor?.name||"ONNX");
+    $("tracknetBadge").textContent="TRACKNET READY";$("tracknetBadge").style.background="#12392f";$("tracknetBadge").style.color="#63e6be";
+    tnSetLiveStatus("model ready · collecting 8-frame windows");
+    return tn.session;
+  })().catch(err=>{tn.liveError=err;tnSetLiveStatus("model unavailable · player tracking continues ("+(err?.message||"load error")+")");throw err;}).finally(()=>{tn.modelPromise=null;});
+  return tn.modelPromise;
+}
+function tnCaptureLiveFrame(now){
+  // Keep sampling while inference is running; otherwise every model run creates a long blind gap.
+  if(!running||!video.videoWidth||!video.videoHeight||!tn.session)return;
+  if(now-tn.liveLastCapture<40)return;
+  tn.liveLastCapture=now;
+  try{
+    const W=512,H=288,c=document.createElement("canvas");c.width=W;c.height=H;
+    const g=c.getContext("2d",{willReadFrequently:true});g.drawImage(video,0,0,W,H);
+    const data=g.getImageData(0,0,W,H).data;
+    tn.liveBuffer.push({data,t:(performance.now()-sessionStart)/1000});
+    tn.liveFrames++;
+    // Bound memory and latency if the phone cannot infer as quickly as frames arrive.
+    if(tn.liveBuffer.length>24)tn.liveBuffer.splice(0,tn.liveBuffer.length-16);
+    if(tn.liveBuffer.length>=8&&!tn.liveInference){
+      const batch=tn.liveBuffer.splice(0,8);
+      tnRunLiveWindow(batch).catch(err=>{console.warn("Live shuttle inference failed",err);tnSetLiveStatus("inference error · player tracking continues");});
+    }
+  }catch(err){console.warn("Could not sample live shuttle frame",err);tnSetLiveStatus("frame sampling unavailable · player tracking continues");}
+}
+async function tnRunLiveWindow(frames){
+  if(!tn.session||frames.length!==8||tn.liveInference)return;
+  const runId=tn.liveRunId;
+  tn.liveInference=true;const started=performance.now();
+  try{
+    const inputName=tn.session.inputNames[0],meta=tn.session.inputMetadata?.[inputName],dims=meta?.dimensions||[];
+    let H=Number(dims.at(-2)),W=Number(dims.at(-1));if(!Number.isFinite(H)||H<=0)H=288;if(!Number.isFinite(W)||W<=0)W=512;
+    if(H*W>1024*1024)throw new Error("Model input dimensions are too large for live phone inference.");
+    const resized=[];
+    for(const frame of frames){const c=document.createElement("canvas");c.width=W;c.height=H;const g=c.getContext("2d",{willReadFrequently:true});const tmp=document.createElement("canvas");tmp.width=512;tmp.height=288;tmp.getContext("2d").putImageData(new ImageData(frame.data,512,288),0,0);g.drawImage(tmp,0,0,W,H);resized.push(g.getImageData(0,0,W,H).data);}
+    const pixels=W*H,median=new Uint8Array(pixels*3);
+    for(let p=0;p<pixels;p++)for(let ch=0;ch<3;ch++){const vals=resized.map(f=>f[p*4+ch]).sort((a,b)=>a-b);median[p*3+ch]=vals[4];}
+    const inputData=new Float32Array(32*pixels);
+    for(let p=0;p<pixels;p++)for(let ch=0;ch<3;ch++)inputData[ch*pixels+p]=median[p*3+ch]/255;
+    for(let f=0;f<8;f++)for(let ch=0;ch<3;ch++)for(let p=0;p<pixels;p++)inputData[(3+f*3+ch)*pixels+p]=resized[f][p*4+ch]/255;
+    const tensor=new tn.ort.Tensor("float32",inputData,[1,32,H,W]);
+    const result=await tn.session.run({[inputName]:tensor}),out=result[tn.session.outputNames[0]],od=out.dims;
+    const channels=Number(od[1])||8,oh=Number(od.at(-2)),ow=Number(od.at(-1)),data=out.data;
+    if(!oh||!ow||channels<1)throw new Error("Unexpected TrackNet output shape: "+JSON.stringify(od));
+    for(let ch=0;ch<Math.min(8,channels);ch++){
+      let best=-Infinity,bestI=-1;const offset=ch*oh*ow;
+      for(let i=0;i<oh*ow;i++){const value=Number(data[offset+i]);if(value>best){best=value;bestI=i;}}
+      if(bestI>=0&&Number.isFinite(best)&&runId===tn.liveRunId){
+        const point={x:(bestI%ow)/Math.max(1,ow-1),y:Math.floor(bestI/ow)/Math.max(1,oh-1),score:best,t:frames[ch].t};
+        shuttleHistory.push(point);
+      }
+    }
+    if(runId===tn.liveRunId){
+      if(shuttleHistory.length>5000)shuttleHistory=shuttleHistory.slice(-5000);
+      const last=shuttleHistory[shuttleHistory.length-1];
+      if(last){tnSetLiveStatus("experimental tracking · "+shuttleHistory.length+" candidate points · raw peak "+Number(last.score).toFixed(3)+" · "+((performance.now()-started)/1000).toFixed(2)+"s/window");drawAll();}
+    }
+  }finally{
+    if(runId===tn.liveRunId){
+      tn.liveInference=false;
+      // Drain queued windows in order without blocking the player-pose loop.
+      if(running&&tn.session&&tn.liveBuffer.length>=8){
+        const nextBatch=tn.liveBuffer.splice(0,8);
+        tnRunLiveWindow(nextBatch).catch(err=>{console.warn("Queued shuttle inference failed",err);tnSetLiveStatus("inference error · player tracking continues");});
+      }
+    }
+  }
+}
+async function tnDrainLiveShuttle(timeoutMs=2500){
+  const started=performance.now();
+  while(performance.now()-started<timeoutMs){
+    if(tn.liveInference){
+      await new Promise(resolve=>setTimeout(resolve,50));
+      continue;
+    }
+    if(!tn.session||tn.liveBuffer.length<8)break;
+    const batch=tn.liveBuffer.splice(0,8);
+    try{await tnRunLiveWindow(batch);}catch(err){console.warn("Final shuttle inference failed",err);}
+  }
+  // Any remaining incomplete frames are intentionally discarded; TrackNet requires 8-frame windows.
+}
+
 $("tracknetVideo").addEventListener("change",e=>{
   const f=e.target.files&&e.target.files[0];if(!f)return;
   if(tn.videoUrl)URL.revokeObjectURL(tn.videoUrl);
@@ -1894,20 +2014,8 @@ $("tracknetVideo").addEventListener("change",e=>{
 });
 $("loadTracknetBtn").addEventListener("click",async()=>{
   if(tn.busy)return;tn.busy=true;$("loadTracknetBtn").disabled=true;$("tracknetModelState").textContent="Loading runtime…";
-  try{
-    tn.ort=await import("https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.webgpu.min.mjs");
-    const variant=$("tracknetVariant").value;
-    const modelUrl=`https://huggingface.co/jinergenkai/badminton-analysis-web/resolve/main/tracknet3_${variant}.onnx`;
-    $("tracknetModelState").textContent="Downloading model…";tnStatus("Downloading TrackNetV3 weights. This may take a while on the first run.");
-    let providers=["webgpu","wasm"];
-    try{tn.session=await tn.ort.InferenceSession.create(modelUrl,{executionProviders:providers,graphOptimizationLevel:"all"});}
-    catch(firstError){console.warn("WebGPU load failed; retrying WASM",firstError);tn.session=await tn.ort.InferenceSession.create(modelUrl,{executionProviders:["wasm"],graphOptimizationLevel:"all"});}
-    const input=tn.session.inputNames[0],output=tn.session.outputNames[0],meta=tn.session.inputMetadata?.[input];
-    $("tracknetModelState").textContent="Loaded · "+(tn.session.handler?.constructor?.name||"ONNX");
-    $("tracknetBadge").textContent="TRACKNET READY";$("tracknetBadge").style.background="#12392f";$("tracknetBadge").style.color="#63e6be";
-    $("runTracknetBtn").disabled=!tnVideoReady();
-    tnStatus(`Model loaded. Input: ${input}; output: ${output}. Input metadata: ${meta?JSON.stringify(meta.dimensions||meta):"not exposed by this runtime"}. Choose a clip and analyse.`);
-  }catch(err){console.error(err);$("tracknetModelState").textContent="Load failed";tnStatus("Could not load the ONNX model: "+(err?.message||err)+". Check connection, browser support and model hosting. No video was uploaded.");}
+  try{await ensureTracknetModel();const input=tn.session.inputNames[0],output=tn.session.outputNames[0],meta=tn.session.inputMetadata?.[input];$("runTracknetBtn").disabled=!tnVideoReady();tnStatus(`Model loaded. Input: ${input}; output: ${output}. Input metadata: ${meta?JSON.stringify(meta.dimensions||meta):"not exposed by this runtime"}. Choose a clip and analyse.`);}
+  catch(err){console.error(err);$("tracknetModelState").textContent="Load failed";tnStatus("Could not load the ONNX model: "+(err?.message||err)+". Player tracking remains available.");}
   finally{tn.busy=false;$("loadTracknetBtn").disabled=false;}
 });
 function tnFrameAt(video,time){return new Promise((resolve,reject)=>{const done=()=>resolve();video.addEventListener("seeked",done,{once:true});video.currentTime=time;setTimeout(()=>reject(new Error("Video seek timed out")),5000);});}
@@ -2152,7 +2260,7 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
    <div><strong style="font-size:18px">Match Library</strong><div class="note" id="libraryStatus">Saved matches stay on this device and browser.</div></div>
    <button id="refreshLibrary">↻ Refresh</button>
   </div>
-  <div id="libraryStorageNote" class="note" style="margin:8px 0">Only match metadata, player-position samples and digital replay are saved. No video or audio.</div>
+  <div id="libraryStorageNote" class="note" style="margin:8px 0">Match metadata, player-position samples, shuttle trajectory points and digital replay are saved. No video or audio.</div>
   <div id="libraryList" style="display:grid;gap:8px"><div class="note">Loading saved matches…</div></div>
   <div class="toolbar" style="margin-top:10px"><button id="exportAllMatches">Export all matches</button><button id="clearAllMatches">Clear all saved matches</button></div>`;
  live.appendChild(library);
@@ -2165,16 +2273,16 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
  });
  renderMatchLibrary();
 
- const record=document.createElement('section');record.className='panel';record.id='mainRecordingPanel';record.innerHTML='<div id="recordBar"><div><strong style="font-size:18px">Step 1 · Record your match</strong><div class="note" id="recordState">Enable camera to unlock recording. Court calibration is optional.</div></div><div class="toolbar"><span class="metric"><span class="label">TIME</span><span class="value" id="quickTimer">00:00</span></span><button id="recordStart" class="primary" disabled>● START RECORDING</button><button id="recordStop" disabled>STOP</button><button id="recordCalibrate">Calibrate court (optional)</button></div></div><div class="note" style="margin-top:10px">Flow: choose singles/doubles → start recording → AI tracks visible players with coloured markers → stop → identify yourself → analyse the flat 2D movement map.</div>';
+ const record=document.createElement('section');record.className='panel';record.id='mainRecordingPanel';record.innerHTML='<div id="recordBar"><div><strong style="font-size:18px">Step 1 · Record your match</strong><div class="note" id="recordState">Enable camera to unlock recording. Court calibration is optional.</div></div><div class="toolbar"><span class="metric"><span class="label">TIME</span><span class="value" id="quickTimer">00:00</span></span><button id="recordStart" class="primary" disabled>● START RECORDING</button><button id="recordStop" disabled>STOP</button><button id="recordCalibrate">Calibrate court (optional)</button></div></div><div class="note" style="margin-top:10px">V18 flow: start recording → AI tracks visible players and attempts shuttle tracking → stop and auto-save → identify yourself → analyse your movement and review the shuttle path.</div><div id="shuttleLiveStatus" class="wizCallout" style="margin-top:10px">Shuttle tracking: waiting for recording. TrackNetV3 loads automatically when recording starts; player tracking does not depend on it.</div>';
  live.appendChild(record);
  // Keep the recording controls immediately beside the live camera, not buried below the library.
  if(monitor?.parentNode)monitor.parentNode.insertBefore(record,monitor);
   const replay=document.createElement('section');replay.className='panel';replay.id='matchReplayPanel';replay.hidden=true;
- replay.innerHTML='<div class="toolbar" style="justify-content:space-between"><div><strong style="font-size:18px">Match Replay</strong><div class="note" id="replaySummary">Processing recorded player positions…</div><div class="note" id="replaySaveStatus">A match auto-saves here when you stop, if player positions were captured.</div></div><button id="exportReplay">Export replay JSON</button></div><div style="max-width:820px;margin:12px auto;background:#123f35;border:2px solid #a9d7c5;border-radius:12px;padding:12px"><canvas id="replayCourt" width="800" height="400" style="display:block;width:100%;height:auto"></canvas></div><input id="replaySeek" type="range" min="0" max="0" value="0" step="1" style="width:100%"><div class="toolbar" style="justify-content:center"><button id="replayPlay">▶ Play replay</button><button id="replayPause" disabled>Ⅱ Pause</button></div><div class="note">Reconstructed from detected player positions, not camera footage. Missed detections and temporary ID switches may appear.</div>';
+ replay.innerHTML='<div class="toolbar" style="justify-content:space-between"><div><strong style="font-size:18px">Match Replay</strong><div class="note" id="replaySummary">Processing recorded player positions…</div><div class="note" id="replaySaveStatus">A match auto-saves here when you stop, if player positions were captured.</div></div><button id="exportReplay">Export replay JSON</button></div><div style="max-width:820px;margin:12px auto;background:#123f35;border:2px solid #a9d7c5;border-radius:12px;padding:12px"><canvas id="replayCourt" width="800" height="400" style="display:block;width:100%;height:auto"></canvas></div><input id="replaySeek" type="range" min="0" max="0" value="0" step="1" style="width:100%"><div class="toolbar" style="justify-content:center"><button id="replayPlay">▶ Play replay</button><button id="replayPause" disabled>Ⅱ Pause</button></div><div class="note">Reconstructed from detected player positions and experimental shuttle points, not camera footage. Shuttle misses/false detections and temporary player ID switches may appear.</div>';
  replay.insertAdjacentHTML('beforeend',`
  <div class="panel" style="margin-top:14px;background:#13232c">
   <div class="toolbar" style="justify-content:space-between">
-   <div><strong style="font-size:18px">Match Analysis</strong><div class="note">Analyses the player-position data captured in this session.</div></div>
+   <div><strong style="font-size:18px">Match Analysis</strong><div class="note">Analyses player-position data captured in this session; V18 also stores experimental shuttle candidate positions when TrackNetV3 is available.</div></div>
    <button class="primary" id="analyseMatchBtn">Analyse My Match</button>
   </div>
   <div id="matchAnalysisResult" class="note" style="margin-top:12px">Stop recording, choose your P1–P4 identity, then analyse the flat movement map.</div>
@@ -2263,10 +2371,10 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
    $('recordStop').disabled=!isRecording;
    $('recordStart').classList.toggle('recording',isRecording);
    $('recordStart').textContent=isRecording?'● RECORDING':(!cameraConnected?'● ENABLE CAMERA FIRST':(!modelReady?'● LOADING AI MODEL':'● START RECORDING'));
-   $('recordState').textContent=isRecording?'Recording live player positions and drawing pose skeletons.':(!cameraConnected?'Enable the camera and wait for the live preview.':(!modelReady?'Camera connected. Waiting for the AI pose model…':'Ready to record. Court calibration and player detection are optional; recording can start now.'));
+   $('recordState').textContent=isRecording?'Recording players; experimental shuttle candidate tracking is also running when its model is ready.':(!cameraConnected?'Enable the camera and wait for the live preview.':(!modelReady?'Camera connected. Waiting for the AI pose model…':'Ready to record. Court calibration and player detection are optional; recording can start now.'));
    $('quickTimer').textContent=$('time')?.textContent||'00:00';
    if(cameraConnected&&!modelReady)$('quickHint').textContent='Camera connected. Please wait for the AI models to finish loading.';
-   if(hasCamera)$('quickHint').textContent='Camera and AI are ready. Press Start Recording; all visible players will be tracked and marked. Choose yourself after stopping.';
+   if(hasCamera)$('quickHint').textContent='Camera and AI are ready. Press Start Recording; all visible players will be tracked and V18 will load the shuttle detector automatically. Choose yourself after stopping.';
  }
  setInterval(sync,500);
  // Hide the long stage-by-stage dashboard unless the user deliberately opens it.
