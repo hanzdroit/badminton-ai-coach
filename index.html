@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#101820">
 <link rel="icon" href="data:,">
-<title>Badminton AI Coach — Stage 17.6 · Live & Video Analysis</title>
+<title>Badminton AI Coach — Stage 17.7 · Live & Video Analysis</title>
 <style>
 :root{color-scheme:dark;--bg:#101820;--panel:#182630;--muted:#9fb0bb;--accent:#63e6be;--line:#30434f}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f4f7f8;font:15px system-ui,-apple-system,Segoe UI,sans-serif}
@@ -2125,7 +2125,14 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
    if(canvasSlots){canvasSlots.innerHTML='';for(let i=1;i<=maxPlayers;i++){const track=liveTracks[i-1];const present=!!track;const chip=document.createElement('span');chip.className='canvas-player-slot '+(present?'':'missing');chip.textContent='P'+i+(present?' · Detected':' · Waiting');chip.title=present?'Tracking player P'+i:'Waiting for player P'+i;canvasSlots.appendChild(chip);}}
    $('canvasDetectCount').textContent=liveTracks.length+' / '+maxPlayers+' detected';
 
-   if($('selfieMonitor').style.display==='block')$('selfieStatus').textContent=selected?'YOU SELECTED':'P'+detected+' DETECTED';
+   // The old selfie monitor was removed from the Stage 17.5+ workflow.
+   // Guard optional legacy UI so a missing element cannot abort sync()
+   // before the recording controls are refreshed.
+   const selfieMonitor=$('selfieMonitor');
+   if(selfieMonitor?.style.display==='block'){
+     const selfieStatus=$('selfieStatus');
+     if(selfieStatus)selfieStatus.textContent=selected?'YOU SELECTED':'P'+detected+' DETECTED';
+   }
    $('recordStart').disabled=running;
    $('recordStart').setAttribute('aria-disabled',running?'true':'false');
    $('recordStop').disabled=!running;
