@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#101820">
 <link rel="icon" href="data:,">
-<title>Badminton AI Coach</title>
+<title>Badminton AI Coach — Stage 17.3 · Live & Video Analysis</title>
 <style>
 :root{color-scheme:dark;--bg:#101820;--panel:#182630;--muted:#9fb0bb;--accent:#63e6be;--line:#30434f}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f4f7f8;font:15px system-ui,-apple-system,Segoe UI,sans-serif}
@@ -2048,14 +2048,18 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
  const obs=new MutationObserver(sync);obs.observe($('players'),{childList:true,subtree:true,characterData:true});
  const originalRender=window.renderCoachHome; // status is also polled below.
  function sync(){
-   const hasCamera=!!(document.getElementById('liveDot')?.classList.contains('on'));
+   // Use the real media stream and loaded pose model as the recording gate.
+   // The decorative status dot can be reset by unrelated status messages.
+   const cameraConnected=!!stream;
+   const modelReady=!!landmarker;
+   const hasCamera=cameraConnected&&modelReady;
    const selected=!!document.getElementById('selection')?.textContent.includes('Following temporary ID');
    const running=document.getElementById('stopBtn')?.disabled===false;
    const detected=$('players')?.querySelectorAll('.player').length||0;
    const maxPlayers=quickMode.value==='singles'?2:4;
    for(let i=1;i<=4;i++){const card=$('identityName'+i)?.closest('.identity-card');if(card)card.hidden=i>maxPlayers;}
    $('cmCount').textContent=detected+' / '+maxPlayers;
-   $('cmStatus').textContent=!hasCamera?'Waiting for rear camera…':(detected===0?'Camera active · Looking for players…':detected+' player'+(detected===1?'':'s')+' detected · Tracking automatically');
+   $('cmStatus').textContent=!cameraConnected?'Waiting for rear camera…':(!modelReady?'Camera connected · Loading AI models…':(detected===0?'Camera active · Looking for players…':detected+' player'+(detected===1?'':'s')+' detected · Tracking automatically'));
    const cm=$('cmPlayers');cm.innerHTML='';
    const liveTracks=activeTracks().slice(0,maxPlayers);
    for(let i=1;i<=maxPlayers;i++){
@@ -2073,9 +2077,10 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
    $('recordStop').disabled=!running;
    $('recordStart').classList.toggle('recording',running);
    $('recordStart').textContent=running?'● RECORDING':'● START RECORDING';
-   $('recordState').textContent=running?'Recording all detected player positions.':(!hasCamera?'Enable camera to begin.':(courtHomography?'Ready. Court mapping is active.':'Ready. You can record now; court calibration is optional.'));
+   $('recordState').textContent=running?'Recording all detected player positions.':(!cameraConnected?'Enable camera to begin.':(!modelReady?'Camera connected. Waiting for AI models to finish loading…':(courtHomography?'Ready. Court mapping is active.':'Ready. You can record now; court calibration is optional.')));
    $('quickTimer').textContent=$('time')?.textContent||'00:00';
-   if(hasCamera)$('quickHint').textContent='Camera is active. Colourful pose dots and skeleton lines should track visible players automatically.';
+   if(cameraConnected&&!modelReady)$('quickHint').textContent='Camera connected. Please wait for the AI models to finish loading.';
+   if(hasCamera)$('quickHint').textContent='Camera and AI are ready. Colourful pose dots and skeleton lines should track visible players automatically. Start recording whenever you are ready.';
  }
  setInterval(sync,500);
  // Hide the long stage-by-stage dashboard unless the user deliberately opens it.
