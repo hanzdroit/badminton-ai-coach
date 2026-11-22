@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#101820">
 <link rel="icon" href="data:,">
-<title>Badminton AI Coach — Stage 16.5 Match Library</title>
+<title>Badminton AI Coach — Stage 16.5 Match Library · Rear Camera</title>
 <style>
 :root{color-scheme:dark;--bg:#101820;--panel:#182630;--muted:#9fb0bb;--accent:#63e6be;--line:#30434f}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f4f7f8;font:15px system-ui,-apple-system,Segoe UI,sans-serif}
@@ -114,11 +114,6 @@ header{position:sticky;top:0;z-index:30;background:#101b23eF;backdrop-filter:blu
 #liveWorkspace{max-width:1100px;margin:0 auto;padding:0 14px 18px;display:grid;gap:12px}
 #liveWorkspace .panel{margin:0}
 #liveWorkspace #stage{aspect-ratio:16/9;min-height:260px;position:relative;overflow:hidden}
-#selfieMonitor{position:absolute;right:12px;top:12px;width:clamp(104px,18%,190px);aspect-ratio:4/3;z-index:8;border:2px solid #63e6be;border-radius:12px;overflow:hidden;background:#071016;box-shadow:0 5px 20px #0009;display:none}
-#selfieMonitor video{width:100%;height:100%;object-fit:cover;display:block;transform:scaleX(-1)}
-#selfieMonitor .selfieTag{position:absolute;left:5px;right:5px;bottom:5px;padding:4px 6px;border-radius:6px;background:#071016d9;color:#fff;font-size:10px;font-weight:750;display:flex;justify-content:space-between;gap:4px}
-#selfieMonitor .selfieClose{position:absolute;right:5px;top:5px;width:24px;height:24px;padding:0;border-radius:50%;background:#071016d9;color:#fff;border:1px solid #ffffff66;z-index:2}
-#selfieStatus{font-size:10px;color:#b9d6ca}
 #liveWorkspace #players{display:flex;gap:10px;flex-wrap:wrap}
 #liveWorkspace .player{min-width:72px;padding:12px 16px;font-size:14px}
 #liveWorkspace #cameraBtn,#liveWorkspace #startBtn,#liveWorkspace #stopBtn{display:none!important}
@@ -264,9 +259,8 @@ header{position:sticky;top:0;z-index:30;background:#101b23eF;backdrop-filter:blu
       <div class="placeholder" id="placeholder">Allow camera access, then place your phone behind the baseline in landscape orientation. Keep the full court and players visible.</div>
       <video id="video" playsinline muted></video>
       <canvas id="overlay" aria-label="Live pose tracking. Tap a player to select."></canvas><div id="courtCalOverlay" class="court-cal-overlay" hidden><strong>COURT CALIBRATION</strong><span>Tap 4 court corners: far-left → far-right → near-right → near-left</span><small id="courtCalOverlayStep">Ready for corner 1 of 4</small></div>
-      <div id="selfieMonitor" aria-label="Front camera self preview"><button type="button" class="selfieClose" id="closeSelfie" title="Hide selfie preview">×</button><video id="selfieVideo" playsinline muted></video><div class="selfieTag"><span>SELF VIEW</span><span id="selfieStatus">Starting…</span></div></div>
-    </div>
-    <div id="cameraZoomControls" class="panel" style="margin-top:10px;padding:10px 12px;background:#13232c">
+      </div>
+     <div id="cameraZoomControls" class="panel" style="margin-top:10px;padding:10px 12px;background:#13232c">
       <div class="toolbar" style="justify-content:space-between">
         <strong>Camera zoom</strong><strong id="cameraZoomValue">1.0×</strong>
       </div>
@@ -277,7 +271,7 @@ header{position:sticky;top:0;z-index:30;background:#101b23eF;backdrop-filter:blu
       <div class="note" id="cameraZoomStatus">Connect the rear camera to check supported zoom.</div>
     </div>
     <div class="toolbar" style="justify-content:space-between;margin-top:10px">
-      <span class="note">P labels are temporary IDs · Tap your skeleton to select yourself</span>
+      <span class="note">Rear camera detects court players · Tap your skeleton to select yourself</span>
       <span class="note" id="fpsText">AI: waiting</span>
     </div>
   </section>
@@ -1662,24 +1656,10 @@ $("clearTracknetBtn").addEventListener("click",()=>{tn.points=[];$("tracknetFram
  const $=id=>document.getElementById(id);
  const live=$('liveWorkspace'), advanced=$('advancedArea');
  // Optional front-camera picture-in-picture. Rear camera remains the sole source for court/player detection.
- let selfieStream=null, selfieAttempted=false, selfieDismissed=false;
- async function startSelfiePreview(){
-   if(selfieStream||selfieAttempted||selfieDismissed)return; selfieAttempted=true;
-   const wrap=$('selfieMonitor'),sv=$('selfieVideo'),label=$('selfieStatus');
-   try{
-     const devices=await navigator.mediaDevices.enumerateDevices();
-     const front=devices.find(d=>d.kind==='videoinput' && /front|user|facetime/i.test(d.label));
-     const constraints={audio:false,video:front?.deviceId?{deviceId:{exact:front.deviceId},width:{ideal:640},height:{ideal:480}}:{facingMode:{ideal:'user'},width:{ideal:640},height:{ideal:480}}};
-     selfieStream=await navigator.mediaDevices.getUserMedia(constraints);
-     sv.srcObject=selfieStream; await sv.play(); wrap.style.display='block'; label.textContent='Preview active';
-   }catch(err){
-     selfieStream=null; wrap.style.display='block'; label.textContent='Unavailable';
-     wrap.title='This phone/browser may not support using front and rear cameras simultaneously. Rear-camera player detection is still active.';
-   }
- }
- function stopSelfiePreview(){if(selfieStream){selfieStream.getTracks().forEach(t=>t.stop());selfieStream=null;} $('selfieVideo').srcObject=null;$('selfieMonitor').style.display='none';}
- $('closeSelfie').addEventListener('click',()=>{selfieDismissed=true;stopSelfiePreview();});
- const cameraPanel=$('stage')?.closest('.panel');
+ // Rear-camera-only mode: avoid competing front/rear camera requests on mobile browsers.
+ const selfieStream=null;
+ function stopSelfiePreview(){}
+  const cameraPanel=$('stage')?.closest('.panel');
  const zoomSlider=$('cameraZoomSlider'),zoomValue=$('cameraZoomValue'),zoomStatus=$('cameraZoomStatus'),zoomReset=$('cameraZoomReset');
  let zoomMin=.6,zoomMax=1.5,zoomSupported=false;
  function syncCameraZoom(){
