@@ -5,7 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#101827">
-<title>Badminton AI Coach V1.1</title>
+<title>Badminton AI Coach V1.2</title>
 
 <style>
 :root {
@@ -192,7 +192,7 @@ footer {
 <header>
   <h1>🏸 Badminton AI Coach</h1>
   <p>Live Player Detection & Skeleton Tracking</p>
-  <p>V1.1 · Clean Rebuild</p>
+  <p>V1.2 · Smart Player Tracking</p>
 </header>
 
 <main>
@@ -260,9 +260,18 @@ footer {
   <h2>Movement Data Recording</h2>
 
   <p style="font-size:13px;color:var(--muted);line-height:1.6">
-    This records player coordinates and skeleton landmarks only.
+    This records player coordinates, foot positions and skeleton landmarks only.
     No raw video is saved.
   </p>
+
+  <label for="serverSelect">Current Server (manual selection)</label>
+  <select id="serverSelect">
+    <option value="">No server selected</option>
+    <option value="1">P1 is serving</option>
+    <option value="2">P2 is serving</option>
+    <option value="3">P3 is serving</option>
+    <option value="4">P4 is serving</option>
+  </select>
 
   <button id="startRecordBtn" disabled>
     Start Recording Movement
@@ -292,19 +301,22 @@ footer {
     <div>🟡 Yellow dot — Player head position</div>
     <div>🏷️ P1–P4 — Player identification</div>
     <div>🦴 Skeleton — Body landmark connections</div>
-    <div>📍 Tracking — Player centre coordinates</div>
+    <div>📍 Tracking — Smoothed player centre coordinates</div>
+    <div>🟢 Green ground ring — Player foot position</div>
+    <div>🟡 Gold ground ring — Manually selected server</div>
   </div>
 
   <p style="font-size:12px;color:var(--muted);margin-top:15px">
-    Player IDs are assigned and tracked using position matching.
-    Identity may change if players overlap or cross paths.
+    Player IDs use motion prediction and position matching. IDs are retained
+    during short detection gaps; heavy overlap or players crossing may still
+    cause an identity switch. Server selection is manual in this version.
   </p>
 </section>
 
 </main>
 
 <footer>
-  Badminton AI Coach V1.1 · Movement data only
+  Badminton AI Coach V1.2 · Movement data only
 </footer>
 
 <script type="module">
@@ -324,6 +336,7 @@ const startRecordBtn = document.getElementById("startRecordBtn");
 const stopRecordBtn = document.getElementById("stopRecordBtn");
 const exportBtn = document.getElementById("exportBtn");
 const clearBtn = document.getElementById("clearBtn");
+const serverSelect = document.getElementById("serverSelect");
 
 const cameraStatus = document.getElementById("cameraStatus");
 const recordStatus = document.getElementById("recordStatus");
@@ -343,13 +356,16 @@ let fpsStart = performance.now();
 
 let tracks = [];
 let nextId = 1;
+let activeServerId = null;
 
 let recordedFrames = [];
 let sessionStart = 0;
 let lastSavedFrame = 0;
 
 const DETECTION_INTERVAL = 66;
-const MAX_MISSED = 20;
+const MAX_MISSED = 60; // retain identity for about four seconds at the target detection rate
+const TRACK_SMOOTHING = 0.38;
+const LANDMARK_SMOOTHING = 0.42;
 
 const CONNECTIONS = [
   [0,1],[1,2],[2,3],[3,7],
@@ -375,7 +391,7 @@ function recordMessage(message) {
 
 function updateStats() {
   document.getElementById("playerCount").textContent =
-    tracks.length;
+    tracks.filter(track => track.missed === 0).length;
 
   document.getElementById("fps").textContent =
     detectionFPS;
@@ -473,121 +489,176 @@ cameraBtn.addEventListener("click", async () => {
 
 });
 
-// Player centre calculation
+// Player centre calculation. Hip centre is the tracking anchor.
 function getCentre(pose) {
-
   const left = pose[23];
   const right = pose[24];
 
   if (left && right &&
-      left.visibility > 0.3 &&
-      right.visibility > 0.3) {
+      (left.visibility ?? 0) > 0.3 &&
+      (right.visibility ?? 0) > 0.3) {
+    return { x: (left.x + right.x) / 2, y: (left.y + right.y) / 2 };
+  }
 
+  const leftShoulder = pose[11];
+  const rightShoulder = pose[12];
+  if (leftShoulder && rightShoulder) {
     return {
-      x: (left.x + right.x) / 2,
-      y: (left.y + right.y) / 2
+      x: (leftShoulder.x + rightShoulder.x) / 2,
+      y: (leftShoulder.y + rightShoulder.y) / 2
     };
   }
-
-  return {
-    x: (pose[11].x + pose[12].x) / 2,
-    y: (pose[11].y + pose[12].y) / 2
-  };
-
+  return null;
 }
 
-// Basic player identity tracking
-function assignPlayers(poses) {
+// Estimate the ground contact point from ankle, heel and toe landmarks.
+function getFeet(pose) {
+  const footIndexes = [27, 28, 29, 30, 31, 32];
+  const visible = footIndexes
+    .map(index => pose[index])
+    .filter(point => point && (point.visibility ?? 0) > 0.22);
 
-  const detections = poses.map((pose,index) => ({
-    pose,
-    centre: getCentre(pose),
-    assigned: false,
-    index
-  }));
+  if (!visible.length) return null;
+  return {
+    x: visible.reduce((sum, point) => sum + point.x, 0) / visible.length,
+    y: visible.reduce((sum, point) => sum + point.y, 0) / visible.length
+  };
+}
+
+function smoothPose(previousPose, currentPose) {
+  if (!previousPose || previousPose.length !== currentPose.length) {
+    return currentPose.map(point => ({ ...point }));
+  }
+
+  return currentPose.map((point, index) => {
+    const previous = previousPose[index];
+    const visibility = point.visibility ?? 0;
+    if (!previous || visibility < 0.12) return { ...point };
+    return {
+      ...point,
+      x: previous.x + (point.x - previous.x) * LANDMARK_SMOOTHING,
+      y: previous.y + (point.y - previous.y) * LANDMARK_SMOOTHING,
+      z: previous.z + ((point.z ?? 0) - (previous.z ?? 0)) * LANDMARK_SMOOTHING
+    };
+  });
+}
+
+// Stable slot tracking with simple velocity prediction and smoothed coordinates.
+function assignPlayers(poses) {
+  const detections = poses
+    .map(pose => ({ pose, centre: getCentre(pose), assigned: false, track: null }))
+    .filter(detection => detection.centre);
 
   const pairs = [];
-
   for (const track of tracks) {
+    if (track.missed > MAX_MISSED) continue;
+    const predictedX = track.x + track.vx * (track.missed + 1);
+    const predictedY = track.y + track.vy * (track.missed + 1);
+
     for (const detection of detections) {
+      const dx = predictedX - detection.centre.x;
+      const dy = predictedY - detection.centre.y;
+      const distance = Math.hypot(dx, dy);
+      const threshold = Math.min(0.32, 0.20 + track.missed * 0.002);
+      if (distance < threshold) pairs.push({ track, detection, distance });
+    }
+  }
 
-      const dx = track.x - detection.centre.x;
-      const dy = track.y - detection.centre.y;
+  pairs.sort((a, b) => a.distance - b.distance);
+  for (const pair of pairs) {
+    const { track, detection } = pair;
+    if (track.matched || detection.assigned) continue;
 
-      const distance = Math.sqrt(dx*dx + dy*dy);
+    const elapsedFrames = Math.max(1, track.missed + 1);
+    const measuredVx = (detection.centre.x - track.x) / elapsedFrames;
+    const measuredVy = (detection.centre.y - track.y) / elapsedFrames;
+    track.vx = track.vx * 0.55 + measuredVx * 0.45;
+    track.vy = track.vy * 0.55 + measuredVy * 0.45;
+    track.x += (detection.centre.x - track.x) * TRACK_SMOOTHING;
+    track.y += (detection.centre.y - track.y) * TRACK_SMOOTHING;
+    track.pose = smoothPose(track.pose, detection.pose);
 
-      if (distance < 0.22) {
-        pairs.push({
-          track,
-          detection,
-          distance
-        });
+    const newFeet = getFeet(detection.pose);
+    if (newFeet) {
+      if (track.feet) {
+        track.feet.x += (newFeet.x - track.feet.x) * 0.48;
+        track.feet.y += (newFeet.y - track.feet.y) * 0.48;
+      } else {
+        track.feet = newFeet;
       }
     }
+
+    track.missed = 0;
+    track.matched = true;
+    detection.assigned = true;
+    detection.track = track;
   }
 
-  pairs.sort((a,b) => a.distance-b.distance);
-
-  for (const pair of pairs) {
-
-    if (pair.track.matched ||
-        pair.detection.assigned) continue;
-
-    pair.track.x = pair.detection.centre.x;
-    pair.track.y = pair.detection.centre.y;
-    pair.track.pose = pair.detection.pose;
-    pair.track.missed = 0;
-    pair.track.matched = true;
-
-    pair.detection.assigned = true;
-    pair.detection.track = pair.track;
-
-  }
-
-  tracks.forEach(track => {
-
-    if (!track.matched) {
-      track.missed++;
-    }
-
+  for (const track of tracks) {
+    if (!track.matched) track.missed++;
     track.matched = false;
+  }
+  tracks = tracks.filter(track => track.missed <= MAX_MISSED);
 
-  });
-
-  tracks = tracks.filter(t => t.missed <= MAX_MISSED);
-
-  const maximum = Number(
-    document.getElementById("maxPlayers").value
-  );
-
+  const maximum = Number(document.getElementById("maxPlayers").value);
   const unmatched = detections
-    .filter(d => !d.assigned)
-    .sort((a,b) => a.centre.x-b.centre.x);
+    .filter(detection => !detection.assigned)
+    .sort((a, b) => a.centre.x - b.centre.x);
 
   for (const detection of unmatched) {
+    if (tracks.filter(track => track.missed === 0).length >= maximum) break;
 
-    if (tracks.length >= maximum) break;
-
-    const usedIds = tracks.map(t => t.id);
-
+    const usedIds = new Set(tracks.map(track => track.id));
     let id = 1;
-    while (usedIds.includes(id)) id++;
+    while (usedIds.has(id) && id <= maximum) id++;
+    if (id > maximum) break;
 
+    const feet = getFeet(detection.pose);
     const track = {
       id,
       x: detection.centre.x,
       y: detection.centre.y,
-      pose: detection.pose,
+      vx: 0,
+      vy: 0,
+      pose: detection.pose.map(point => ({ ...point })),
+      feet,
       missed: 0,
       matched: false
     };
-
     tracks.push(track);
+    detection.assigned = true;
     detection.track = track;
-
   }
 
-  return tracks.filter(t => t.missed === 0);
+  return tracks.filter(track => track.missed === 0);
+}
+
+// Permanent FIFA-style ground marker. The selected server is highlighted gold.
+function drawGroundMarker(track) {
+  if (!track.feet) return;
+  const w = canvas.width;
+  const h = canvas.height;
+  const x = track.feet.x * w;
+  const y = track.feet.y * h;
+  const isServer = activeServerId === track.id;
+  const color = isServer ? "#ffdc55" : "#36d399";
+
+  // Slight perspective scaling: markers become a little larger nearer the camera.
+  const perspective = Math.max(0.75, Math.min(1.35, 0.78 + track.feet.y * 0.42));
+  const rx = Math.max(12, Math.min(w * 0.045, w * 0.026 * perspective));
+  const ry = Math.max(4, rx * 0.30);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+  ctx.fillStyle = isServer ? "rgba(255,220,85,0.20)" : "rgba(54,211,153,0.16)";
+  ctx.fill();
+  ctx.lineWidth = Math.max(2, w / 520);
+  ctx.strokeStyle = color;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = isServer ? 16 : 9;
+  ctx.stroke();
+  ctx.restore();
 }
 
 // Draw skeleton and player marker
@@ -708,6 +779,11 @@ function captureMovement(players,timestamp) {
 
       x: Number(track.x.toFixed(5)),
       y: Number(track.y.toFixed(5)),
+      feet: track.feet ? {
+        x: Number(track.feet.x.toFixed(5)),
+        y: Number(track.feet.y.toFixed(5))
+      } : null,
+      isServer: activeServerId === track.id,
 
       landmarks: track.pose.map(p => ({
         x: Number(p.x.toFixed(5)),
@@ -750,9 +826,8 @@ function detectLoop() {
 
       ctx.clearRect(0,0,canvas.width,canvas.height);
 
-      for (const player of players) {
-        drawPlayer(player);
-      }
+      for (const player of players) drawGroundMarker(player);
+      for (const player of players) drawPlayer(player);
 
       captureMovement(players,now);
 
@@ -768,7 +843,8 @@ function detectLoop() {
 
       status(
         players.length +
-        " player(s) detected · Skeleton tracking active"
+        " player(s) detected · Skeleton + foot tracking active" +
+        (activeServerId ? " · P" + activeServerId + " serving" : "")
       );
 
     } catch(error) {
@@ -839,7 +915,7 @@ exportBtn.addEventListener("click", () => {
   const output = {
 
     app: "Badminton AI Coach",
-    version: "1.1",
+    version: "1.2",
 
     matchType: document.getElementById("matchType").value,
 
@@ -870,12 +946,12 @@ exportBtn.addEventListener("click", () => {
 
   const a = document.createElement("a");
   a.href = url;
-  a.download = "badminton_movement_v1_1.json";
+  a.download = "badminton_movement_v1_2.json";
   a.click();
 
   URL.revokeObjectURL(url);
 
-  recordMessage("Movement JSON exported successfully.");
+  recordMessage("V1.2 movement JSON exported successfully.");
 
 });
 
@@ -949,14 +1025,30 @@ stopCameraBtn.addEventListener("click", () => {
 
 });
 
+// Manual server selection controls the gold ground ring.
+serverSelect.addEventListener("change", () => {
+  activeServerId = serverSelect.value ? Number(serverSelect.value) : null;
+  if (cameraRunning) {
+    status(activeServerId
+      ? "P" + activeServerId + " marked as current server."
+      : "Server highlight cleared.");
+  }
+});
+
 // Update player capacity
 document.getElementById("maxPlayers").addEventListener(
   "change",
   () => {
-    tracks = tracks.slice(
-      0,
-      Number(document.getElementById("maxPlayers").value)
-    );
+    const maximum = Number(document.getElementById("maxPlayers").value);
+    tracks = tracks.filter(track => track.id <= maximum);
+    Array.from(serverSelect.options).forEach(option => {
+      if (option.value) option.disabled = Number(option.value) > maximum;
+    });
+    if (activeServerId && activeServerId > maximum) {
+      activeServerId = null;
+      serverSelect.value = "";
+    }
+    updateStats();
   }
 );
 
