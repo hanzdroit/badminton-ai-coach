@@ -5,7 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#101827">
-<title>Badminton AI Coach V1.3</title>
+<title>Badminton AI Coach V1.4</title>
 
 <style>
 :root {
@@ -205,6 +205,22 @@ label {
   margin-top:12px;
 }
 
+.shuttle-status {
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.6;
+  margin-top:10px;
+}
+.shuttle-toggle {
+  display:flex;
+  align-items:center;
+  gap:10px;
+  color:var(--muted);
+  font-size:13px;
+  margin:10px 0 4px;
+}
+.shuttle-toggle input { width:18px; height:18px; accent-color:var(--green); }
+.shuttle-legend { font-size:12px; color:var(--muted); line-height:1.8; }
 footer {
   text-align:center;
   padding:20px;
@@ -219,7 +235,7 @@ footer {
 <header>
   <h1>🏸 Badminton AI Coach</h1>
   <p>Live Player Detection & Skeleton Tracking</p>
-  <p>V1.3 · Court Calibration & Mapping</p>
+  <p>V1.4 · Experimental Shuttle Detection</p>
 </header>
 
 <main>
@@ -281,6 +297,23 @@ footer {
   <p class="status" id="cameraStatus">
     Waiting for camera activation.
   </p>
+</section>
+
+<section class="panel">
+  <h2>Experimental Shuttle Detection</h2>
+  <p class="calibration-help">
+    Looks for small, bright moving objects in the camera image and follows likely candidates between frames.
+    This is an early visual heuristic, not a trained shuttle-recognition model. It may miss fast shots or mark
+    reflections, court markings, shoes or bright clothing as false candidates.
+  </p>
+  <label class="shuttle-toggle"><input type="checkbox" id="shuttleEnabled" checked> Enable experimental shuttle tracking</label>
+  <div class="stats">
+    <div class="stat"><strong id="shuttleState">ON</strong><span>Detector</span></div>
+    <div class="stat"><strong id="shuttleCandidates">0</strong><span>Current candidates</span></div>
+    <div class="stat"><strong id="shuttleLastSeen">—</strong><span>Last seen</span></div>
+  </div>
+  <p class="shuttle-status" id="shuttleStatus">Waiting for camera activation.</p>
+  <div class="shuttle-legend">🔴 Red/cyan target — possible shuttle location · Trail — recent candidate path</div>
 </section>
 
 <section class="panel">
@@ -358,6 +391,7 @@ footer {
     <div>🟢 Green ground ring — Player foot position</div>
     <div>🟡 Gold ground ring — Manually selected server</div>
     <div>📐 Court coordinates — Player foot position mapped in metres after calibration</div>
+    <div>🏸 Shuttle candidate — Experimental bright-motion tracking marker</div>
   </div>
 
   <p style="font-size:12px;color:var(--muted);margin-top:15px">
@@ -372,7 +406,7 @@ footer {
 </main>
 
 <footer>
-  Badminton AI Coach V1.3 · Court mapping + movement data
+  Badminton AI Coach V1.4 · Shuttle candidates + court mapping
 </footer>
 
 <script type="module">
@@ -397,6 +431,11 @@ const calibrateBtn = document.getElementById("calibrateBtn");
 const resetCalibrationBtn = document.getElementById("resetCalibrationBtn");
 const calibrationStatus = document.getElementById("calibrationStatus");
 const courtReadout = document.getElementById("courtReadout");
+const shuttleEnabled = document.getElementById("shuttleEnabled");
+const shuttleState = document.getElementById("shuttleState");
+const shuttleCandidatesReadout = document.getElementById("shuttleCandidates");
+const shuttleLastSeenReadout = document.getElementById("shuttleLastSeen");
+const shuttleStatus = document.getElementById("shuttleStatus");
 
 const cameraStatus = document.getElementById("cameraStatus");
 const recordStatus = document.getElementById("recordStatus");
@@ -426,6 +465,24 @@ let courtCalibration = {
   points: [],
   homography: null
 };
+
+// Low-resolution frame-difference shuttle candidate tracker (experimental).
+const SHUTTLE_PROCESS_WIDTH = 320;
+const SHUTTLE_BRIGHTNESS_MIN = 178;
+const SHUTTLE_DIFFERENCE_MIN = 34;
+const SHUTTLE_MIN_BLOB_PIXELS = 2;
+const SHUTTLE_MAX_BLOB_PIXELS = 30;
+let shuttleCanvas = document.createElement("canvas");
+shuttleCanvas.width = SHUTTLE_PROCESS_WIDTH;
+shuttleCanvas.height = 180;
+let shuttleCtx = shuttleCanvas.getContext("2d", { willReadFrequently:true });
+let previousShuttleGray = null;
+let shuttleTrail = [];
+let shuttleLastDetection = null;
+let shuttleFrameWidth = SHUTTLE_PROCESS_WIDTH;
+let shuttleFrameHeight = 180;
+let shuttleLastSeenAt = null;
+let shuttleCandidateCount = 0;
 
 let recordedFrames = [];
 let sessionStart = 0;
@@ -621,6 +678,191 @@ canvas.addEventListener("click", event => {
   }
 });
 
+function resetShuttleDetector() {
+  previousShuttleGray = null;
+  shuttleTrail = [];
+  shuttleLastDetection = null;
+  shuttleLastSeenAt = null;
+  shuttleCandidateCount = 0;
+  shuttleCandidatesReadout.textContent = "0";
+  shuttleLastSeenReadout.textContent = "—";
+  shuttleStatus.textContent = shuttleEnabled.checked
+    ? "Waiting for the next camera frame."
+    : "Shuttle tracking is disabled.";
+}
+
+function detectShuttleCandidate() {
+  if (!shuttleEnabled.checked || !video.videoWidth || video.readyState < 2) {
+    shuttleCandidateCount = 0;
+    return null;
+  }
+
+  const width = SHUTTLE_PROCESS_WIDTH;
+  const height = Math.max(90, Math.round(width * video.videoHeight / video.videoWidth));
+  if (shuttleCanvas.width !== width || shuttleCanvas.height !== height) {
+    shuttleCanvas.width = width;
+    shuttleCanvas.height = height;
+    shuttleFrameWidth = width;
+    shuttleFrameHeight = height;
+    shuttleCtx = shuttleCanvas.getContext("2d", { willReadFrequently:true });
+    previousShuttleGray = null;
+  }
+
+  shuttleCtx.drawImage(video, 0, 0, width, height);
+  const pixels = shuttleCtx.getImageData(0, 0, width, height).data;
+  const total = width * height;
+  const gray = new Uint8Array(total);
+  const mask = new Uint8Array(total);
+
+  for (let i = 0, j = 0; i < total; i++, j += 4) {
+    const luminance = (pixels[j] * 0.299 + pixels[j+1] * 0.587 + pixels[j+2] * 0.114) | 0;
+    gray[i] = luminance;
+    if (previousShuttleGray && luminance >= SHUTTLE_BRIGHTNESS_MIN &&
+        Math.abs(luminance - previousShuttleGray[i]) >= SHUTTLE_DIFFERENCE_MIN) {
+      mask[i] = 1;
+    }
+  }
+
+  const previous = previousShuttleGray;
+  previousShuttleGray = gray;
+  if (!previous) {
+    shuttleCandidateCount = 0;
+    shuttleStatus.textContent = "Building frame reference… hold the camera steady.";
+    return null;
+  }
+
+  const visited = new Uint8Array(total);
+  const queue = new Int32Array(total);
+  const candidates = [];
+
+  for (let start = 0; start < total; start++) {
+    if (!mask[start] || visited[start]) continue;
+    let head = 0, tail = 0;
+    queue[tail++] = start;
+    visited[start] = 1;
+    let count = 0, sumX = 0, sumY = 0, minX = width, minY = height, maxX = 0, maxY = 0;
+    let diffSum = 0;
+
+    while (head < tail) {
+      const index = queue[head++];
+      const x = index % width;
+      const y = (index / width) | 0;
+      count++;
+      sumX += x; sumY += y;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+      diffSum += Math.abs(gray[index] - previous[index]);
+
+      for (let oy = -1; oy <= 1; oy++) {
+        for (let ox = -1; ox <= 1; ox++) {
+          if (ox === 0 && oy === 0) continue;
+          const nx = x + ox, ny = y + oy;
+          if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+          const ni = ny * width + nx;
+          if (mask[ni] && !visited[ni]) {
+            visited[ni] = 1;
+            queue[tail++] = ni;
+          }
+        }
+      }
+    }
+
+    const boxW = maxX - minX + 1;
+    const boxH = maxY - minY + 1;
+    if (count < SHUTTLE_MIN_BLOB_PIXELS || count > SHUTTLE_MAX_BLOB_PIXELS) continue;
+    if (boxW > 9 || boxH > 9 || (boxW > 1 && boxH > 1 && Math.max(boxW,boxH) / Math.min(boxW,boxH) > 5.5)) continue;
+
+    const compactness = count / Math.max(1, boxW * boxH);
+    const motionContrast = Math.min(1, (diffSum / count) / 100);
+    const sizeScore = 1 - Math.abs(count - 8) / 30;
+    const score = Math.max(0, Math.min(1, 0.45 * compactness + 0.35 * motionContrast + 0.20 * sizeScore));
+    candidates.push({
+      x: (sumX / count) / width,
+      y: (sumY / count) / height,
+      pixels: count,
+      score
+    });
+  }
+
+  shuttleCandidateCount = candidates.length;
+  shuttleCandidatesReadout.textContent = String(candidates.length);
+  if (!candidates.length) {
+    if (shuttleLastDetection && shuttleLastDetection.missed < 2) {
+      shuttleLastDetection.missed++;
+      return { ...shuttleLastDetection, predicted:true };
+    }
+    shuttleLastDetection = null;
+    shuttleTrail = shuttleTrail.slice(-1);
+    shuttleStatus.textContent = "No likely shuttle candidate in this frame.";
+    return null;
+  }
+
+  let chosen = null;
+  if (shuttleLastDetection) {
+    const predictedX = shuttleLastDetection.x + (shuttleLastDetection.vx || 0);
+    const predictedY = shuttleLastDetection.y + (shuttleLastDetection.vy || 0);
+    const ranked = candidates.map(candidate => ({
+      ...candidate,
+      distance: Math.hypot(candidate.x - predictedX, candidate.y - predictedY)
+    })).filter(candidate => candidate.distance < 0.22)
+      .sort((a,b) => (a.distance - b.distance) - (b.score - a.score) * 0.025);
+    if (ranked.length) chosen = ranked[0];
+  }
+  if (!chosen) chosen = candidates.slice().sort((a,b) => b.score - a.score)[0];
+
+  const old = shuttleLastDetection;
+  const vx = old ? chosen.x - old.x : 0;
+  const vy = old ? chosen.y - old.y : 0;
+  shuttleLastDetection = { x:chosen.x, y:chosen.y, vx, vy, score:chosen.score, pixels:chosen.pixels, missed:0 };
+  shuttleTrail.push({ x:chosen.x, y:chosen.y });
+  shuttleTrail = shuttleTrail.slice(-8);
+  shuttleLastSeenAt = performance.now();
+  shuttleLastSeenReadout.textContent = "Now";
+  shuttleStatus.textContent = `Possible shuttle candidate · heuristic score ${(chosen.score*100).toFixed(0)}% · ${chosen.pixels} moving pixels. Not a verified detection.`;
+  return { ...shuttleLastDetection, predicted:false };
+}
+
+function drawShuttleCandidate(candidate) {
+  if (!shuttleEnabled.checked || !candidate) return;
+  const w = canvas.width, h = canvas.height;
+  ctx.save();
+  if (shuttleTrail.length > 1) {
+    ctx.beginPath();
+    shuttleTrail.forEach((point,index) => {
+      const x = point.x*w, y = point.y*h;
+      if (index === 0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    });
+    ctx.strokeStyle = "rgba(255,90,90,0.8)";
+    ctx.lineWidth = Math.max(2,w/600);
+    ctx.stroke();
+  }
+  const x = candidate.x*w, y = candidate.y*h;
+  const radius = Math.max(9,w/65);
+  ctx.beginPath();
+  ctx.arc(x,y,radius,0,Math.PI*2);
+  ctx.strokeStyle = candidate.predicted ? "#ffdc55" : "#ff5555";
+  ctx.lineWidth = Math.max(2,w/420);
+  ctx.setLineDash(candidate.predicted ? [5,5] : []);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(x-radius*1.5,y); ctx.lineTo(x+radius*1.5,y);
+  ctx.moveTo(x,y-radius*1.5); ctx.lineTo(x,y+radius*1.5);
+  ctx.stroke();
+  ctx.font = `bold ${Math.max(12,w/55)}px Arial`;
+  ctx.fillStyle = "#ff7777";
+  ctx.textAlign = "left";
+  ctx.fillText("SHUTTLE?", x+radius+5, y-5);
+  ctx.restore();
+}
+
+shuttleEnabled.addEventListener("change", () => {
+  shuttleState.textContent = shuttleEnabled.checked ? "ON" : "OFF";
+  resetShuttleDetector();
+});
+
 function updateStats() {
   document.getElementById("playerCount").textContent =
     tracks.filter(track => track.missed === 0).length;
@@ -696,6 +938,7 @@ cameraBtn.addEventListener("click", async () => {
     await loadAI();
 
     cameraRunning = true;
+    resetShuttleDetector();
 
     cameraBtn.textContent = "Camera Enabled";
     stopCameraBtn.disabled = false;
@@ -996,7 +1239,7 @@ function drawPlayer(track) {
 }
 
 // Save only structured movement data
-function captureMovement(players,timestamp) {
+function captureMovement(players,timestamp,shuttleCandidate) {
 
   if (!isRecording) return;
 
@@ -1006,6 +1249,13 @@ function captureMovement(players,timestamp) {
 
   const frame = {
     t: Number(((timestamp-sessionStart)/1000).toFixed(3)),
+    shuttle: shuttleCandidate ? {
+      x: Number(shuttleCandidate.x.toFixed(5)),
+      y: Number(shuttleCandidate.y.toFixed(5)),
+      heuristicScore: Number(shuttleCandidate.score.toFixed(3)),
+      predicted: Boolean(shuttleCandidate.predicted),
+      court: mapPointToCourt(shuttleCandidate)
+    } : null,
     players: players.map(track => ({
 
       id: "P" + track.id,
@@ -1057,14 +1307,20 @@ function detectLoop() {
       const poses = result.landmarks || [];
 
       const players = assignPlayers(poses);
+      const shuttleCandidate = detectShuttleCandidate();
 
       ctx.clearRect(0,0,canvas.width,canvas.height);
 
       for (const player of players) drawGroundMarker(player);
       for (const player of players) drawPlayer(player);
       drawCalibrationOverlay();
+      drawShuttleCandidate(shuttleCandidate);
+      if (shuttleEnabled.checked && shuttleLastSeenAt && now - shuttleLastSeenAt > 0) {
+        const age = (now - shuttleLastSeenAt) / 1000;
+        if (age > 0.15) shuttleLastSeenReadout.textContent = age < 10 ? `${age.toFixed(1)}s ago` : "10s+ ago";
+      }
 
-      captureMovement(players,now);
+      captureMovement(players,now,shuttleCandidate);
 
       fpsCounter++;
 
@@ -1150,7 +1406,7 @@ exportBtn.addEventListener("click", () => {
   const output = {
 
     app: "Badminton AI Coach",
-    version: "1.3",
+    version: "1.4",
 
     matchType: document.getElementById("matchType").value,
 
@@ -1166,7 +1422,14 @@ exportBtn.addEventListener("click", () => {
 
     frameCount: recordedFrames.length,
 
-    dataType: "player_movement_pose_and_court_coordinates",
+    dataType: "player_movement_pose_court_coordinates_and_experimental_shuttle_candidates",
+
+    shuttleDetection: {
+      enabled: shuttleEnabled.checked,
+      method: "low_resolution_bright_frame_difference_and_connected_components",
+      processWidthPixels: SHUTTLE_PROCESS_WIDTH,
+      note: "Experimental heuristic candidate locations; not verified shuttle recognition and may contain false positives or misses."
+    },
 
     courtCalibration: {
       calibrated: Boolean(courtCalibration.homography),
@@ -1191,12 +1454,12 @@ exportBtn.addEventListener("click", () => {
 
   const a = document.createElement("a");
   a.href = url;
-  a.download = "badminton_movement_v1_3.json";
+  a.download = "badminton_movement_v1_4.json";
   a.click();
 
   URL.revokeObjectURL(url);
 
-  recordMessage("V1.3 movement and court-coordinate JSON exported successfully.");
+  recordMessage("V1.4 movement, court-coordinate and experimental shuttle-candidate JSON exported successfully.");
 
 });
 
@@ -1248,6 +1511,7 @@ stopCameraBtn.addEventListener("click", () => {
   video.style.display = "none";
 
   ctx.clearRect(0,0,canvas.width,canvas.height);
+  resetShuttleDetector();
   courtCalibration.enabled = false;
   canvas.classList.remove("calibrating");
 
@@ -1273,8 +1537,10 @@ stopCameraBtn.addEventListener("click", () => {
 
 });
 
-// Initial court calibration controls are disabled until the camera is ready.
+// Initial controls and experimental shuttle detector state.
 updateCalibrationUI();
+shuttleState.textContent = shuttleEnabled.checked ? "ON" : "OFF";
+resetShuttleDetector();
 
 // Manual server selection controls the gold ground ring.
 serverSelect.addEventListener("change", () => {
