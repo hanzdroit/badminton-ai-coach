@@ -5,7 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#101827">
-<title>Badminton AI Coach V1.4</title>
+<title>Badminton AI Coach V1.6</title>
 
 <style>
 :root {
@@ -79,6 +79,8 @@ button:disabled {
   opacity:.4;
   cursor:not-allowed;
 }
+input[type=file] { font-size:12px; }
+a { color:var(--green); }
 
 select {
   background:#101827;
@@ -235,7 +237,7 @@ footer {
 <header>
   <h1>🏸 Badminton AI Coach</h1>
   <p>Live Player Detection & Skeleton Tracking</p>
-  <p>V1.4 · Experimental Shuttle Detection</p>
+  <p>V1.6 · Camera-Only Recording + Cloud Analysis</p>
 </header>
 
 <main>
@@ -346,9 +348,17 @@ footer {
   <h2>Movement Data Recording</h2>
 
   <p style="font-size:13px;color:var(--muted);line-height:1.6">
-    This records player coordinates, foot positions and skeleton landmarks only.
-    No raw video is saved.
+    V1.6 records video from the phone camera and structured movement data in one session. Point the phone at a laptop screen for YouTube testing, or at the court for a real match. When a cloud API is connected,
+    the video is uploaded for TrackNetV3 processing and temporary server copies are deleted after analysis.
   </p>
+  <label for="cloudEndpoint">Cloud analysis API URL</label>
+  <input id="cloudEndpoint" type="url" placeholder="https://your-deployed-api.example" style="width:100%;padding:13px;border-radius:9px;border:1px solid var(--border);background:#101827;color:white;margin-bottom:10px">
+  <label for="cloudApiKey">Cloud access key (if configured)</label>
+  <input id="cloudApiKey" type="password" autocomplete="off" placeholder="Paste access key only if your server requires it" style="width:100%;padding:13px;border-radius:9px;border:1px solid var(--border);background:#101827;color:white;margin-bottom:10px">
+  <button id="checkCloudBtn" class="secondary" type="button">Check Cloud Connection</button>
+  <p class="calibration-help" id="cloudStatus">Cloud service must be deployed and supplied with TrackNetV3 model checkpoints before real AI analysis can run.</p>
+  <div id="cloudResults" class="calibration-help" style="display:none;margin-top:10px;padding:12px;background:#101827;border-radius:9px"></div>
+<p class="calibration-help">Use this phone camera for both test footage (point it at a laptop screen playing a badminton video) and real-court recording.</p>
 
   <label for="serverSelect">Current Server (manual selection)</label>
   <select id="serverSelect">
@@ -360,11 +370,11 @@ footer {
   </select>
 
   <button id="startRecordBtn" disabled>
-    Start Recording Movement
+    Start Match Recording
   </button>
 
   <button id="stopRecordBtn" class="danger" disabled>
-    Stop Recording
+    Stop & Upload Recording
   </button>
 
   <button id="exportBtn" class="secondary" disabled>
@@ -406,7 +416,7 @@ footer {
 </main>
 
 <footer>
-  Badminton AI Coach V1.4 · Shuttle candidates + court mapping
+  Badminton AI Coach V1.6 · Unified recording workflow
 </footer>
 
 <script type="module">
@@ -439,11 +449,20 @@ const shuttleStatus = document.getElementById("shuttleStatus");
 
 const cameraStatus = document.getElementById("cameraStatus");
 const recordStatus = document.getElementById("recordStatus");
+const cloudEndpointInput = document.getElementById("cloudEndpoint");
+const cloudApiKeyInput = document.getElementById("cloudApiKey");
+const cloudStatus = document.getElementById("cloudStatus");
+const cloudResults = document.getElementById("cloudResults");
+const checkCloudBtn = document.getElementById("checkCloudBtn");
 
 const placeholder = document.getElementById("placeholder");
 
 let stream = null;
 let landmarker = null;
+let mediaRecorder = null;
+let recordedVideoChunks = [];
+let recordedVideoBlob = null;
+let activeInputMode = "camera";
 let cameraRunning = false;
 let isRecording = false;
 let animationId = null;
@@ -901,6 +920,122 @@ async function loadAI() {
 
 }
 
+// V1.6 cloud connection, upload and job tracking.
+function getRecorderMimeType() {
+  const candidates = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm", "video/mp4"];
+  return candidates.find(type => window.MediaRecorder && MediaRecorder.isTypeSupported(type)) || "";
+}
+function cloudHeaders() {
+  const key = cloudApiKeyInput.value.trim();
+  return key ? { "Authorization": `Bearer ${key}` } : {};
+}
+async function checkCloudConnection() {
+  const base = cloudEndpointInput.value.trim().replace(/\/$/, "");
+  if (!base) {
+    cloudStatus.textContent = "Enter the deployed cloud API URL first.";
+    return;
+  }
+  cloudStatus.textContent = "Checking cloud service…";
+  checkCloudBtn.disabled = true;
+  try {
+    const response = await fetch(base + "/health", { headers: cloudHeaders() });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const health = await response.json();
+    const ready = Boolean(health.tracknet_ready);
+    cloudStatus.textContent = ready
+      ? `Connected. TrackNet checkpoints detected (${health.device || "device status available"}).`
+      : `Connected, but TrackNet checkpoints are not ready. ${health.message || "Cloud administrator must add model checkpoints."}`;
+  } catch (error) {
+    cloudStatus.textContent = "Connection failed: " + error.message;
+  } finally {
+    checkCloudBtn.disabled = false;
+  }
+}
+checkCloudBtn.addEventListener("click", checkCloudConnection);
+
+async function uploadVideoForAnalysis(blob, filename) {
+  const base = cloudEndpointInput.value.trim().replace(/\/$/, "");
+  if (!base) {
+    cloudStatus.textContent = "Cloud API URL is not configured. Recording is not uploaded or analysed yet.";
+    recordMessage("Recording captured. Add the cloud API URL after the backend is deployed to enable automatic analysis.");
+    return;
+  }
+  const form = new FormData();
+  form.append("file", blob, filename);
+  form.append("match_type", document.getElementById("matchType").value);
+  form.append("max_players", document.getElementById("maxPlayers").value);
+  form.append("source", "camera");
+  form.append("movement_json", JSON.stringify(buildMovementOutput()));
+  const headers = cloudHeaders();
+  cloudStatus.textContent = "Uploading video and movement data… Keep this page open.";
+  cloudResults.style.display = "none";
+  recordMessage("Uploading recording to cloud. Keep this browser open until upload completes.");
+  try {
+    const response = await fetch(base + "/api/v1/analyze", { method: "POST", headers, body: form });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.detail || `Cloud API returned HTTP ${response.status}`);
+    }
+    const result = await response.json();
+    if (!result.job_id) throw new Error("Cloud API response did not include job_id.");
+    cloudStatus.textContent = `Upload complete. Job ${result.job_id} is ${result.status || "queued"}.`;
+    recordMessage("Upload complete. Cloud AI analysis has started.");
+    pollAnalysisJob(base, result.job_id);
+  } catch (error) {
+    cloudStatus.textContent = "Upload failed: " + error.message;
+    recordMessage("Upload failed. Keep this page open and retry; no cloud result was created.");
+  }
+}
+
+async function pollAnalysisJob(base, jobId) {
+  const statusUrl = `${base}/api/v1/jobs/${encodeURIComponent(jobId)}`;
+  const poll = async () => {
+    try {
+      const response = await fetch(statusUrl, { headers: cloudHeaders() });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const job = await response.json();
+      cloudStatus.textContent = `Cloud analysis: ${job.status || "processing"}${job.progress != null ? ` · ${job.progress}%` : ""}`;
+      if (["completed", "failed", "cancelled"].includes(job.status)) {
+        if (job.status === "completed") {
+          recordMessage("Cloud analysis completed. Shuttle trajectory and movement results are ready.");
+          const resultResponse = await fetch(base + `/api/v1/jobs/${encodeURIComponent(jobId)}/result`, { headers: cloudHeaders() });
+          if (resultResponse.ok) {
+            const data = await resultResponse.json();
+            const points = data.shuttle?.points || [];
+            const visible = points.filter(p => p.visibility && p.x > 0 && p.y > 0).length;
+            cloudResults.innerHTML = `<strong>Analysis complete</strong><br>Video frames: ${data.video?.frame_count ?? "—"}<br>Shuttle points detected: ${visible}<br>Player movement frames: ${data.movement?.frameCount ?? 0}<br><small>Raw recorded camera video was deleted from the processing workspace after analysis.</small>`;
+            cloudResults.style.display = "block";
+          }
+        } else {
+          recordMessage(`Cloud analysis ${job.status}: ${job.error || "No further details supplied."}`);
+        }
+        return;
+      }
+      window.setTimeout(poll, 5000);
+    } catch (error) {
+      cloudStatus.textContent = "Could not check analysis status: " + error.message;
+    }
+  };
+  window.setTimeout(poll, 2500);
+}
+
+function buildMovementOutput() {
+  return {
+    app: "Badminton AI Coach", version: "1.6", matchType: document.getElementById("matchType").value,
+    maxPlayers: Number(document.getElementById("maxPlayers").value), recordingDate: new Date().toISOString(),
+    durationSeconds: recordedFrames.length ? recordedFrames[recordedFrames.length-1].t : 0,
+    frameCount: recordedFrames.length,
+    dataType: "player_movement_pose_court_coordinates_and_experimental_shuttle_candidates",
+    shuttleDetection: { enabled: shuttleEnabled.checked, method: "v1.4_browser_heuristic", note: "Experimental candidates only; TrackNetV3 cloud inference is a separate processing stage." },
+    courtCalibration: { calibrated: Boolean(courtCalibration.homography), courtWidthMetres: COURT_WIDTH_M, courtLengthMetres: COURT_LENGTH_M, origin: "near_left_corner", cornerOrder: COURT_CORNER_LABELS, imagePointsNormalized: courtCalibration.points, mappingMethod: "four_point_projective_homography" },
+    frames: recordedFrames
+  };
+}
+
+cloudEndpointInput.addEventListener("change", () => {
+  cloudStatus.textContent = cloudEndpointInput.value.trim() ? "Cloud API URL entered. Connection will be verified on the next upload." : "Cloud service not configured yet.";
+});
+
 // Camera activation
 cameraBtn.addEventListener("click", async () => {
 
@@ -938,6 +1073,7 @@ cameraBtn.addEventListener("click", async () => {
     await loadAI();
 
     cameraRunning = true;
+    video.loop = false;
     resetShuttleDetector();
 
     cameraBtn.textContent = "Camera Enabled";
@@ -1356,10 +1492,31 @@ startRecordBtn.addEventListener("click", () => {
   if (!cameraRunning || isRecording) return;
 
   recordedFrames = [];
+  recordedVideoChunks = [];
+  recordedVideoBlob = null;
 
   sessionStart = performance.now();
   lastSavedFrame = 0;
   isRecording = true;
+
+  const recordingStream = stream;
+  if (recordingStream && window.MediaRecorder) {
+    const mimeType = getRecorderMimeType();
+    try {
+      mediaRecorder = new MediaRecorder(recordingStream, mimeType ? { mimeType } : undefined);
+      mediaRecorder.ondataavailable = event => { if (event.data && event.data.size) recordedVideoChunks.push(event.data); };
+      mediaRecorder.onstop = async () => {
+        const type = mediaRecorder.mimeType || "video/webm";
+        recordedVideoBlob = new Blob(recordedVideoChunks, { type });
+        const extension = type.includes("mp4") ? "mp4" : "webm";
+        await uploadVideoForAnalysis(recordedVideoBlob, `badminton_match_${Date.now()}.${extension}`);
+      };
+      mediaRecorder.start(2000);
+    } catch (error) {
+      isRecording = false;
+      recordMessage("Video recording is not available: " + error.message);
+      return;
+    }
 
   startRecordBtn.disabled = true;
   stopRecordBtn.disabled = false;
@@ -1369,7 +1526,7 @@ startRecordBtn.addEventListener("click", () => {
   document.getElementById("recordingIndicator").style.display =
     "block";
 
-  recordMessage("Movement data recording started.");
+  recordMessage("Match recording started. Video and movement data are being captured.");
 
   updateStats();
 
@@ -1381,6 +1538,7 @@ stopRecordBtn.addEventListener("click", () => {
   if (!isRecording) return;
 
   isRecording = false;
+  if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
 
   startRecordBtn.disabled = false;
   stopRecordBtn.disabled = true;
@@ -1393,7 +1551,7 @@ stopRecordBtn.addEventListener("click", () => {
   recordMessage(
     "Recording stopped. " +
     recordedFrames.length +
-    " movement frames captured."
+    " movement frames captured. Video upload will start automatically if the cloud API is configured."
   );
 
 });
@@ -1403,47 +1561,7 @@ exportBtn.addEventListener("click", () => {
 
   if (!recordedFrames.length) return;
 
-  const output = {
-
-    app: "Badminton AI Coach",
-    version: "1.4",
-
-    matchType: document.getElementById("matchType").value,
-
-    maxPlayers: Number(
-      document.getElementById("maxPlayers").value
-    ),
-
-    recordingDate: new Date().toISOString(),
-
-    durationSeconds: recordedFrames.length
-      ? recordedFrames[recordedFrames.length-1].t
-      : 0,
-
-    frameCount: recordedFrames.length,
-
-    dataType: "player_movement_pose_court_coordinates_and_experimental_shuttle_candidates",
-
-    shuttleDetection: {
-      enabled: shuttleEnabled.checked,
-      method: "low_resolution_bright_frame_difference_and_connected_components",
-      processWidthPixels: SHUTTLE_PROCESS_WIDTH,
-      note: "Experimental heuristic candidate locations; not verified shuttle recognition and may contain false positives or misses."
-    },
-
-    courtCalibration: {
-      calibrated: Boolean(courtCalibration.homography),
-      courtWidthMetres: COURT_WIDTH_M,
-      courtLengthMetres: COURT_LENGTH_M,
-      origin: "near_left_corner",
-      cornerOrder: COURT_CORNER_LABELS,
-      imagePointsNormalized: courtCalibration.points,
-      mappingMethod: "four_point_projective_homography"
-    },
-
-    frames: recordedFrames
-
-  };
+  const output = buildMovementOutput();
 
   const blob = new Blob(
     [JSON.stringify(output)],
@@ -1454,12 +1572,12 @@ exportBtn.addEventListener("click", () => {
 
   const a = document.createElement("a");
   a.href = url;
-  a.download = "badminton_movement_v1_4.json";
+  a.download = "badminton_movement_v1_5.json";
   a.click();
 
   URL.revokeObjectURL(url);
 
-  recordMessage("V1.4 movement, court-coordinate and experimental shuttle-candidate JSON exported successfully.");
+  recordMessage("V1.6 movement, court-coordinate and experimental shuttle-candidate JSON exported successfully.");
 
 });
 
@@ -1488,8 +1606,8 @@ stopCameraBtn.addEventListener("click", () => {
 
   if (isRecording) {
     isRecording = false;
-    recordedFrames = [];
-    recordMessage("Camera stopped. Unexported session data discarded.");
+    if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
+    recordMessage("Camera stopped. Active recording was stopped.");
   }
 
   if (animationId) {
@@ -1508,6 +1626,9 @@ stopCameraBtn.addEventListener("click", () => {
   }
 
   video.srcObject = null;
+  video.pause();
+  video.removeAttribute("src");
+  video.load();
   video.style.display = "none";
 
   ctx.clearRect(0,0,canvas.width,canvas.height);
