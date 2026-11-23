@@ -237,7 +237,7 @@ footer {
 <header>
   <h1>🏸 Badminton AI Coach</h1>
   <p>Live Player Detection & Skeleton Tracking</p>
-  <p>V1.6 · Camera-Only Recording + Cloud Analysis</p>
+  <p>V1.6 · Auto-Connected Camera Recording</p>
 </header>
 
 <main>
@@ -345,18 +345,13 @@ footer {
 </section>
 
 <section class="panel">
-  <h2>Movement Data Recording</h2>
+  <h2>Match Recording</h2>
 
   <p style="font-size:13px;color:var(--muted);line-height:1.6">
-    V1.6 records video from the phone camera and structured movement data in one session. Point the phone at a laptop screen for YouTube testing, or at the court for a real match. When a cloud API is connected,
-    the video is uploaded for TrackNetV3 processing and temporary server copies are deleted after analysis.
+    V1.6 records video from the phone camera and structured movement data in one session. Point the phone at a laptop screen for YouTube testing, or at the court for a real match. When the app is hosted with its analysis service,
+    the video is uploaded automatically for TrackNetV3 processing and temporary server copies are deleted after analysis.
   </p>
-  <label for="cloudEndpoint">Cloud analysis API URL</label>
-  <input id="cloudEndpoint" type="url" placeholder="https://your-deployed-api.example" style="width:100%;padding:13px;border-radius:9px;border:1px solid var(--border);background:#101827;color:white;margin-bottom:10px">
-  <label for="cloudApiKey">Cloud access key (if configured)</label>
-  <input id="cloudApiKey" type="password" autocomplete="off" placeholder="Paste access key only if your server requires it" style="width:100%;padding:13px;border-radius:9px;border:1px solid var(--border);background:#101827;color:white;margin-bottom:10px">
-  <button id="checkCloudBtn" class="secondary" type="button">Check Cloud Connection</button>
-  <p class="calibration-help" id="cloudStatus">Cloud service must be deployed and supplied with TrackNetV3 model checkpoints before real AI analysis can run.</p>
+  <p class="calibration-help" id="cloudStatus">Connecting to analysis service automatically…</p>
   <div id="cloudResults" class="calibration-help" style="display:none;margin-top:10px;padding:12px;background:#101827;border-radius:9px"></div>
 <p class="calibration-help">Use this phone camera for both test footage (point it at a laptop screen playing a badminton video) and real-court recording.</p>
 
@@ -449,11 +444,9 @@ const shuttleStatus = document.getElementById("shuttleStatus");
 
 const cameraStatus = document.getElementById("cameraStatus");
 const recordStatus = document.getElementById("recordStatus");
-const cloudEndpointInput = document.getElementById("cloudEndpoint");
-const cloudApiKeyInput = document.getElementById("cloudApiKey");
+const CLOUD_API_BASE = window.location.origin;
 const cloudStatus = document.getElementById("cloudStatus");
 const cloudResults = document.getElementById("cloudResults");
-const checkCloudBtn = document.getElementById("checkCloudBtn");
 
 const placeholder = document.getElementById("placeholder");
 
@@ -920,47 +913,33 @@ async function loadAI() {
 
 }
 
-// V1.6 cloud connection, upload and job tracking.
+// V1.6 cloud connection is automatic: frontend and API are served from the same origin.
 function getRecorderMimeType() {
   const candidates = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm", "video/mp4"];
   return candidates.find(type => window.MediaRecorder && MediaRecorder.isTypeSupported(type)) || "";
 }
 function cloudHeaders() {
-  const key = cloudApiKeyInput.value.trim();
-  return key ? { "Authorization": `Bearer ${key}` } : {};
+  // Authentication, if needed, is handled by the hosting layer/server.
+  return {};
 }
 async function checkCloudConnection() {
-  const base = cloudEndpointInput.value.trim().replace(/\/$/, "");
-  if (!base) {
-    cloudStatus.textContent = "Enter the deployed cloud API URL first.";
-    return;
-  }
-  cloudStatus.textContent = "Checking cloud service…";
-  checkCloudBtn.disabled = true;
+  cloudStatus.textContent = "Connecting to analysis service…";
   try {
-    const response = await fetch(base + "/health", { headers: cloudHeaders() });
+    const response = await fetch(CLOUD_API_BASE + "/health", { headers: cloudHeaders() });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const health = await response.json();
     const ready = Boolean(health.tracknet_ready);
     cloudStatus.textContent = ready
-      ? `Connected. TrackNet checkpoints detected (${health.device || "device status available"}).`
-      : `Connected, but TrackNet checkpoints are not ready. ${health.message || "Cloud administrator must add model checkpoints."}`;
+      ? `Analysis service ready (${health.device || "device available"}).`
+      : `Service connected, but TrackNet model is not ready. ${health.message || "Model checkpoints still need to be installed on the server."}`;
   } catch (error) {
-    cloudStatus.textContent = "Connection failed: " + error.message;
-  } finally {
-    checkCloudBtn.disabled = false;
+    cloudStatus.textContent = "Analysis service is not connected yet. The app will retry when you record. (" + error.message + ")";
   }
 }
-checkCloudBtn.addEventListener("click", checkCloudConnection);
 
 async function uploadVideoForAnalysis(blob, filename) {
-  const base = cloudEndpointInput.value.trim().replace(/\/$/, "");
-  if (!base) {
-    cloudStatus.textContent = "Cloud API URL is not configured. Recording is not uploaded or analysed yet.";
-    recordMessage("Recording captured. Add the cloud API URL after the backend is deployed to enable automatic analysis.");
-    return;
-  }
-  const form = new FormData();
+  const base = CLOUD_API_BASE;
+const form = new FormData();
   form.append("file", blob, filename);
   form.append("match_type", document.getElementById("matchType").value);
   form.append("max_players", document.getElementById("maxPlayers").value);
@@ -1032,9 +1011,7 @@ function buildMovementOutput() {
   };
 }
 
-cloudEndpointInput.addEventListener("change", () => {
-  cloudStatus.textContent = cloudEndpointInput.value.trim() ? "Cloud API URL entered. Connection will be verified on the next upload." : "Cloud service not configured yet.";
-});
+checkCloudConnection();
 
 // Camera activation
 cameraBtn.addEventListener("click", async () => {
