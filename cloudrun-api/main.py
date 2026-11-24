@@ -12,7 +12,7 @@ PROJECT_ID = os.environ["GCP_PROJECT_ID"]
 REGION = os.getenv("GCP_REGION", "asia-southeast1")
 JOB_NAME = os.getenv("TRACKNET_JOB_NAME", "badminton-tracknet-worker")
 BUCKET_NAME = os.environ["GCS_BUCKET"]
-UPLOAD_LIMIT_MB = int(os.getenv("UPLOAD_LIMIT_MB", "25"))
+UPLOAD_LIMIT_MB = int(os.getenv("UPLOAD_LIMIT_MB", "30"))
 API_VERSION = "1.9-cloudrun-api"
 
 app = FastAPI(title="Badminton AI Coach Cloud API", version=API_VERSION)
