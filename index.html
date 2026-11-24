@@ -1028,6 +1028,35 @@ document.getElementById("newSessionBtn")?.addEventListener("click", async () => 
   catch (error) { document.getElementById("sessionStatus").textContent = error.message; }
 });
 
+async function uploadBlobInChunks(uploadUrl, blob, label) {
+  const chunkSize = 8 * 1024 * 1024;
+  let offset = 0;
+  while (offset < blob.size) {
+    const endExclusive = Math.min(offset + chunkSize, blob.size);
+    const chunk = blob.slice(offset, endExclusive);
+    const responseStatus = await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", uploadUrl, true);
+      xhr.setRequestHeader("Content-Type", blob.type || "application/octet-stream");
+      xhr.setRequestHeader("Content-Range", `bytes ${offset}-${endExclusive - 1}/${blob.size}`);
+      xhr.upload.onprogress = event => {
+        const uploaded = offset + (event.lengthComputable ? event.loaded : 0);
+        cloudStatus.textContent = `${label}… ${Math.min(100, Math.round(uploaded / blob.size * 100))}%`;
+      };
+      xhr.onload = () => {
+        if (xhr.status === 308 || xhr.status === 200 || xhr.status === 201) resolve(xhr.status);
+        else reject(new Error(`${label} returned HTTP ${xhr.status}.`));
+      };
+      xhr.onerror = () => reject(new Error(`${label} failed. Check Cloud Storage CORS and network connection.`));
+      xhr.ontimeout = () => reject(new Error(`${label} timed out.`));
+      xhr.timeout = 30 * 60 * 1000;
+      xhr.send(chunk);
+    });
+    offset = endExclusive;
+    if (responseStatus === 200 || responseStatus === 201) break;
+  }
+}
+
 async function uploadVideoForAnalysis(blob, filename) {
   if (!blob || !blob.size) {
     cloudStatus.textContent = "Video capture failed: the browser produced an empty recording.";
@@ -1049,9 +1078,7 @@ async function uploadVideoForAnalysis(blob, filename) {
     if (!activeSessionId) await createCloudSession();
     const health = await getCloudHealth();
     const maxUploadBytes = Number(health.upload_limit_mb || 500) * 1024 * 1024;
-    if (blob.size > maxUploadBytes) {
-      throw new Error(`Recording exceeds the ${health.upload_limit_mb || 500} MB cloud upload limit.`);
-    }
+    if (blob.size > maxUploadBytes) throw new Error(`Recording exceeds the ${health.upload_limit_mb || 500} MB cloud upload limit.`);
 
     const initForm = new FormData();
     initForm.append("session_id", activeSessionId);
@@ -1063,54 +1090,26 @@ async function uploadVideoForAnalysis(blob, filename) {
     initForm.append("source", "camera");
     initForm.append("origin", window.location.origin);
 
-    const initResponse = await fetch(base + "/api/v1/uploads", {
-      method:"POST", headers:cloudHeaders(), body:initForm
-    });
+    const initResponse = await fetch(base + "/api/v1/uploads", { method:"POST", headers:cloudHeaders(), body:initForm });
     const initData = await initResponse.json().catch(() => ({}));
     if (!initResponse.ok) throw new Error(initData.detail || `Could not start upload (HTTP ${initResponse.status}).`);
-    if (!initData.upload_url || !initData.job_id) throw new Error("Cloud API did not return a resumable upload URL.");
-
-    const chunkSize = Number(initData.chunk_size_bytes || 8 * 1024 * 1024);
-    let offset = 0;
-    while (offset < blob.size) {
-      const endExclusive = Math.min(offset + chunkSize, blob.size);
-      const chunk = blob.slice(offset, endExclusive);
-      const responseStatus = await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("PUT", initData.upload_url, true);
-        xhr.setRequestHeader("Content-Type", blob.type || "application/octet-stream");
-        xhr.setRequestHeader("Content-Range", `bytes ${offset}-${endExclusive - 1}/${blob.size}`);
-        xhr.upload.onprogress = event => {
-          const uploaded = offset + (event.lengthComputable ? event.loaded : 0);
-          const percent = Math.min(100, Math.round(uploaded / blob.size * 100));
-          cloudStatus.textContent = `Uploading directly to Cloud Storage… ${percent}%`;
-          cloudResults.textContent = `Recording: ${formatBytes(blob.size)} · Uploaded: ${formatBytes(uploaded)} / ${formatBytes(blob.size)}`;
-        };
-        xhr.onload = () => {
-          if (xhr.status === 308 || xhr.status === 200 || xhr.status === 201) resolve(xhr.status);
-          else reject(new Error(`Cloud Storage upload returned HTTP ${xhr.status}.`));
-        };
-        xhr.onerror = () => reject(new Error("Direct Cloud Storage upload failed. Check the bucket CORS configuration and network connection."));
-        xhr.ontimeout = () => reject(new Error("Cloud Storage upload timed out."));
-        xhr.timeout = 30 * 60 * 1000;
-        xhr.send(chunk);
-      });
-      offset = endExclusive;
-      cloudStatus.textContent = `Uploading directly to Cloud Storage… ${Math.round(offset / blob.size * 100)}%`;
-      if (responseStatus === 200 || responseStatus === 201) break;
+    if (!initData.upload_url || !initData.movement_upload_url || !initData.job_id) {
+      throw new Error("Cloud API did not return both resumable upload URLs.");
     }
 
-    cloudStatus.textContent = "Video uploaded. Sending movement data and starting AI analysis…";
-    const completeForm = new FormData();
-    completeForm.append("movement_json", JSON.stringify(buildMovementOutput()));
+    await uploadBlobInChunks(initData.upload_url, blob, "Uploading video directly to Cloud Storage");
+    const movementBlob = new Blob([JSON.stringify(buildMovementOutput())], {type:"application/json"});
+    await uploadBlobInChunks(initData.movement_upload_url, movementBlob, "Uploading movement data directly to Cloud Storage");
+
+    cloudStatus.textContent = "Video and movement data uploaded. Verifying uploads and starting AI analysis…";
     const completeResponse = await fetch(base + `/api/v1/uploads/${encodeURIComponent(initData.job_id)}/complete`, {
-      method:"POST", headers:cloudHeaders(), body:completeForm
+      method:"POST", headers:cloudHeaders()
     });
     const result = await completeResponse.json().catch(() => ({}));
     if (!completeResponse.ok) throw new Error(result.detail || `Upload completion failed (HTTP ${completeResponse.status}).`);
     cloudStatus.textContent = `Upload complete. Job ${result.job_id} is ${result.status || "queued"}.`;
-    cloudResults.textContent = `Upload successful · ${formatBytes(blob.size)} · Job ${result.job_id}. Cloud analysis is starting.`;
-    recordMessage("Direct video upload to Cloud Storage completed. Cloud AI analysis has started.");
+    cloudResults.textContent = `Upload successful · ${formatBytes(blob.size)} video · Job ${result.job_id}. Cloud analysis is starting.`;
+    recordMessage("Video and movement data uploaded directly to Cloud Storage. Cloud AI analysis has started.");
     pollAnalysisJob(base, result.job_id);
   } catch (error) {
     cloudStatus.textContent = "Upload failed: " + error.message;
