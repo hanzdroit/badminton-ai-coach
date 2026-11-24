@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends git ffmpeg libg
 WORKDIR /opt/worker
 
 # CPU-only PyTorch. patch_cpu.py adapts upstream inference code to CPU/CUDA device selection.
-RUN pip install --index-url https://download.pytorch.org/whl/cpu torch==2.2.2 torchvision==0.17.2
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.2.2 torchvision==0.17.2
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
