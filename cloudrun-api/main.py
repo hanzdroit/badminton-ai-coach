@@ -100,7 +100,7 @@ async def analyze(file: UploadFile = File(...), match_type: str = Form("doubles"
     operation = response.json()
     job = {"job_id":job_id,"status":"queued","progress":0,"operation_name":operation.get("name"),
            "input_uri":input_uri,"output_uri":output_uri,"movement_path":movement_name,
-           "filename":filename,"size_bytes":total,"match_type":match_type,"max_players":max_players}
+           "filename":filename,"size_bytes":total,"movement_frame_count":movement.get("frameCount",0),"match_type":match_type,"max_players":max_players}
     write_job(job)
     return {"job_id":job_id,"status":"queued","upload_received":True,"video_size_bytes":total,
             "movement_frame_count":movement.get("frameCount",0),"message":"Video uploaded and TrackNet job queued."}
@@ -140,14 +140,13 @@ def job_status(job_id: str):
         job["status"]="processing"; job["progress"]=75
     write_job(job)
     return {"job_id":job_id,"status":job["status"],"progress":job["progress"],"error":job.get("error"),
-            "upload":{"received":True,"size_bytes":job["size_bytes"],"movement_frame_count":0}}
+            "upload":{"received":True,"size_bytes":job["size_bytes"],"movement_frame_count":job.get("movement_frame_count",0)}}
 
 @app.get("/api/v1/jobs/{job_id}/result")
 def job_result(job_id: str):
     job = read_job(job_id)
     if job.get("status") != "completed": raise HTTPException(409,"Analysis is not complete.")
-    stem = Path(job["filename"]).stem
-    result_blob = bucket.blob(f"results/{job_id}/{stem}_trajectory.json")
+    result_blob = bucket.blob(f"results/{job_id}/{job_id}_trajectory.json")
     if not result_blob.exists(): raise HTTPException(404,"Trajectory JSON not found in Storage.")
     shuttle = json.loads(result_blob.download_as_text())
     movement = json.loads(bucket.blob(job["movement_path"]).download_as_text())
