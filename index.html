@@ -5,7 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#101827">
-<title>Badminton AI Coach V1.8</title>
+<title>Badminton AI Coach V1.9</title>
 
 <style>
 :root {
@@ -237,7 +237,7 @@ footer {
 <header>
   <h1>🏸 Badminton AI Coach</h1>
   <p>Live Player Detection & Skeleton Tracking</p>
-  <p>V1.8 · Cloud Preflight & Upload Protection</p>
+  <p>V1.9 · Cloud TrackNet Analysis</p>
 </header>
 
 <main>
@@ -445,7 +445,7 @@ const shuttleStatus = document.getElementById("shuttleStatus");
 
 const cameraStatus = document.getElementById("cameraStatus");
 const recordStatus = document.getElementById("recordStatus");
-const APP_VERSION = "1.8";
+const APP_VERSION = "1.9";
 const CLOUD_API_BASE = "https://badminton-cloud-api-330288568190.asia-southeast1.run.app";
 let lastUploadFilename = "";
 let uploadInProgress = false;
@@ -952,7 +952,7 @@ async function checkCloudConnection() {
     const uploadReady = Boolean(health.upload_ready);
     const inpaintReady = Boolean(health.inpaintnet_ready);
     cloudStatus.textContent = modelReady
-      ? `Cloud API connected · video upload ready · TrackNetV3 ready${inpaintReady ? " · InpaintNet ready" : " · InpaintNet optional model not mounted"}.`
+      ? `Cloud API connected · upload limit ${health.upload_limit_mb || "—"} MiB · TrackNetV3 ready${inpaintReady ? " · InpaintNet ready" : " · InpaintNet optional model not mounted"}.`
       : uploadReady
         ? `Cloud API connected · video upload ready (limit ${health.upload_limit_mb || "—"} MB). TrackNetV3 is not installed yet; uploads can be tested, but AI analysis will not run.`
         : `Cloud API connected, but video upload is not ready. ${health.message || "Upload service is not configured."}`;
@@ -1004,6 +1004,10 @@ async function uploadVideoForAnalysis(blob, filename) {
     const health = await getCloudHealth();
     if (!health.upload_ready) {
       throw new Error(health.message || "Cloud API is online, but video upload is not enabled yet. Your recording is preserved.");
+    }
+    const maxUploadBytes = Number(health.upload_limit_mb || 30) * 1024 * 1024;
+    if (blob.size > maxUploadBytes) {
+      throw new Error("Recording exceeds the current cloud upload limit. Keep this recording in the page and record a shorter clip.");
     }
     cloudStatus.textContent = health.tracknet_ready
       ? "Cloud service and AI model ready. Starting upload…"
