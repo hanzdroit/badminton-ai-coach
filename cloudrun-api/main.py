@@ -224,14 +224,16 @@ def job_result(job_id: str):
         job["verification_error"] = str(exc)
         write_job(job)
         raise HTTPException(422, f"Stored results failed verification: {exc}")
+    # Persist successful result verification before attempting source deletion.
+    job["result_verified"] = True
+    write_job(job)
     input_uri = job.get("input_uri", "")
     if input_uri.startswith(f"gs://{BUCKET_NAME}/") and not job.get("source_deleted"):
         source_name = input_uri.split(f"gs://{BUCKET_NAME}/",1)[1]
         source_blob = bucket.blob(source_name)
         if source_blob.exists(): source_blob.delete()
         job["source_deleted"] = True
-    job["result_verified"] = True
-    write_job(job)
+        write_job(job)
     if job.get("session_id"):
         update_session_match(job["session_id"], {"job_id":job_id,"filename":job.get("filename"),"status":"completed","size_bytes":job.get("size_bytes",0),"match_type":job.get("match_type"),"max_players":job.get("max_players"),"result_verified":True,"source_deleted":job.get("source_deleted",False)})
     return {"job_id":job_id,"session_id":job.get("session_id"),"status":"completed","result_verified":True,"source_deleted":job.get("source_deleted",False),"video":{"frame_count":shuttle.get("frame_count"),"fps":shuttle.get("fps")},"shuttle":shuttle,"movement":movement}
