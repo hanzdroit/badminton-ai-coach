@@ -1065,6 +1065,11 @@ async function pollAnalysisJob(base, jobId) {
             cloudResults.innerHTML = `<strong>Analysis complete</strong><br>Video frames: ${data.video?.frame_count ?? "—"}<br>Shuttle points detected: ${visible}<br>Player movement frames: ${data.movement?.frameCount ?? 0}<br><small>Raw recorded camera video was deleted from the processing workspace after analysis.</small>`;
             cloudResults.style.display = "block";
           }
+        } else if (job.upload?.received) {
+          cloudStatus.textContent = "Video upload received successfully. AI analysis is not available yet.";
+          cloudResults.innerHTML = `<strong>Upload test successful</strong><br>Video size: ${formatBytes(job.upload.size_bytes)}<br>Movement frames received: ${job.upload.movement_frame_count ?? 0}<br><small>The temporary video was deleted. TrackNetV3 is not deployed, so no shuttle analysis was performed.</small>`;
+          cloudResults.style.display = "block";
+          recordMessage("Video reached the cloud successfully and its temporary copy was deleted. AI analysis is still pending TrackNetV3 deployment.");
         } else {
           recordMessage(`Cloud analysis ${job.status}: ${job.error || "No further details supplied."}`);
         }
