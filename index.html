@@ -454,7 +454,7 @@ const shuttleStatus = document.getElementById("shuttleStatus");
 const cameraStatus = document.getElementById("cameraStatus");
 const recordStatus = document.getElementById("recordStatus");
 const APP_VERSION = "2.0";
-let activeSessionId = null;
+let activeSessionId = localStorage.getItem("badmintonActiveSessionId") || null;
 const CLOUD_API_BASE = "https://badminton-cloud-api-330288568190.asia-southeast1.run.app";
 let lastUploadFilename = "";
 let uploadInProgress = false;
@@ -990,6 +990,7 @@ async function createCloudSession() {
   if (!response.ok) throw new Error("Could not create a cloud match session.");
   const data = await response.json();
   activeSessionId = data.session_id;
+  localStorage.setItem("badmintonActiveSessionId", activeSessionId);
   await refreshMatchHistory();
   return data;
 }
@@ -1112,6 +1113,7 @@ async function pollAnalysisJob(base, jobId) {
       const job = await response.json();
       cloudStatus.textContent = `Cloud analysis: ${job.status || "processing"}${job.progress != null ? ` · ${job.progress}%` : ""}`;
       if (["completed", "failed", "cancelled"].includes(job.status)) {
+        await refreshMatchHistory();
         if (job.status === "completed") {
           recordMessage("Cloud analysis completed. Shuttle trajectory and movement results are ready.");
           const resultResponse = await fetch(base + `/api/v1/jobs/${encodeURIComponent(jobId)}/result`, { headers: cloudHeaders() });
