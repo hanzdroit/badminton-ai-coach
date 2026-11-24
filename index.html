@@ -258,6 +258,14 @@ footer {
   </select>
 </section>
 
+<section class="panel" id="matchHistoryPanel">
+  <h2>Match History</h2>
+  <p class="calibration-help">Matches are grouped into cloud sessions. Each match has its own analysis job and results.</p>
+  <button id="newSessionBtn" class="secondary" type="button">Start New Session</button>
+  <p class="calibration-help" id="sessionStatus">Connecting to match history…</p>
+  <div id="matchHistoryList" class="calibration-help"></div>
+</section>
+
 <section class="panel">
   <h2>Live Camera & AI Detection</h2>
 
@@ -445,7 +453,8 @@ const shuttleStatus = document.getElementById("shuttleStatus");
 
 const cameraStatus = document.getElementById("cameraStatus");
 const recordStatus = document.getElementById("recordStatus");
-const APP_VERSION = "1.9";
+const APP_VERSION = "2.0";
+let activeSessionId = null;
 const CLOUD_API_BASE = "https://badminton-cloud-api-330288568190.asia-southeast1.run.app";
 let lastUploadFilename = "";
 let uploadInProgress = false;
@@ -976,6 +985,48 @@ retryUploadBtn.addEventListener("click", () => {
   }
 });
 
+async function createCloudSession() {
+  const response = await fetch(CLOUD_API_BASE + "/api/v1/sessions", { method:"POST", headers:cloudHeaders() });
+  if (!response.ok) throw new Error("Could not create a cloud match session.");
+  const data = await response.json();
+  activeSessionId = data.session_id;
+  await refreshMatchHistory();
+  return data;
+}
+
+async function refreshMatchHistory() {
+  const statusEl = document.getElementById("sessionStatus");
+  const listEl = document.getElementById("matchHistoryList");
+  if (!statusEl || !listEl) return;
+  try {
+    const response = await fetch(CLOUD_API_BASE + "/api/v1/sessions", { headers:cloudHeaders() });
+    if (!response.ok) throw new Error("History unavailable");
+    const data = await response.json();
+    statusEl.textContent = activeSessionId ? "Active session: " + activeSessionId.slice(0,8) : "No active session. A session is created when you record.";
+    listEl.innerHTML = "";
+    (data.sessions || []).forEach(session => {
+      const section = document.createElement("div");
+      section.style.cssText = "padding:10px;margin:8px 0;background:#101827;border-radius:8px";
+      const heading = document.createElement("strong");
+      heading.textContent = "Session " + session.session_id.slice(0,8) + " · " + (session.matches || []).length + " match(es)";
+      section.appendChild(heading);
+      (session.matches || []).forEach(match => {
+        const line = document.createElement("div");
+        line.style.cssText = "margin-top:7px;font-size:12px";
+        line.textContent = (match.filename || "Match") + " — " + (match.status || "queued") + (match.result_verified ? " · results verified" : "");
+        section.appendChild(line);
+      });
+      listEl.appendChild(section);
+    });
+    if (!(data.sessions || []).length) listEl.textContent = "No matches recorded yet."; 
+  } catch (error) { statusEl.textContent = "Match history will appear when the cloud API is available."; }
+}
+
+document.getElementById("newSessionBtn")?.addEventListener("click", async () => {
+  try { await createCloudSession(); document.getElementById("sessionStatus").textContent = "New session ready. Your next recording will be Match 1 in this session."; }
+  catch (error) { document.getElementById("sessionStatus").textContent = error.message; }
+});
+
 async function uploadVideoForAnalysis(blob, filename) {
   if (!blob || !blob.size) {
     cloudStatus.textContent = "Video capture failed: the browser produced an empty recording. Please record again.";
@@ -989,6 +1040,8 @@ async function uploadVideoForAnalysis(blob, filename) {
   retryUploadBtn.style.display = "none";
   const base = CLOUD_API_BASE;
   const form = new FormData();
+  if (!activeSessionId) await createCloudSession();
+  form.append("session_id", activeSessionId);
   form.append("file", blob, filename);
   form.append("match_type", document.getElementById("matchType").value);
   form.append("max_players", document.getElementById("maxPlayers").value);
@@ -1102,6 +1155,7 @@ function buildMovementOutput() {
 }
 
 checkCloudConnection();
+refreshMatchHistory();
 
 // Camera activation
 cameraBtn.addEventListener("click", async () => {
