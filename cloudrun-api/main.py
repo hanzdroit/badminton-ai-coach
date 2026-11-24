@@ -178,7 +178,9 @@ def job_status(job_id: str):
     else:
         job["status"]="processing"; job["progress"]=75
     write_job(job)
-    return {"job_id":job_id,"status":job["status"],"progress":job["progress"],"error":job.get("error"),
+    if job.get("session_id"):
+        update_session_match(job["session_id"], {"job_id":job_id,"filename":job.get("filename"),"status":job["status"],"size_bytes":job.get("size_bytes",0),"match_type":job.get("match_type"),"max_players":job.get("max_players"),"result_verified":job.get("result_verified",False),"error":job.get("error")})
+    return {"job_id":job_id,"session_id":job.get("session_id"),"status":job["status"],"progress":job["progress"],"error":job.get("error"),
             "upload":{"received":True,"size_bytes":job["size_bytes"],"movement_frame_count":job.get("movement_frame_count",0)}}
 
 @app.get("/api/v1/jobs/{job_id}/result")
