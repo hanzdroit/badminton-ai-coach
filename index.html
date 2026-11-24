@@ -348,7 +348,7 @@ footer {
   <h2>Match Recording</h2>
 
   <p style="font-size:13px;color:var(--muted);line-height:1.6">
-    V1.7 records video from the phone camera and structured movement data in one session. Point the phone at a laptop screen for YouTube testing, or at the court for a real match. When the app is hosted with its analysis service,
+    V1.8 records video from the phone camera and structured movement data in one session. Point the phone at a laptop screen for YouTube testing, or at the court for a real match. When the app is hosted with its analysis service,
     the video is uploaded automatically for TrackNetV3 processing and temporary server copies are deleted after analysis.
   </p>
   <p class="calibration-help" id="cloudStatus">Connecting to analysis service automatically…</p>
@@ -949,10 +949,13 @@ async function checkCloudConnection() {
   try {
     const health = await getCloudHealth();
     const modelReady = Boolean(health.tracknet_ready);
+    const uploadReady = Boolean(health.upload_ready);
     const inpaintReady = Boolean(health.inpaintnet_ready);
     cloudStatus.textContent = modelReady
-      ? `Cloud API connected · TrackNetV3 ready${inpaintReady ? " · InpaintNet ready" : " · InpaintNet optional model not mounted"}.`
-      : `Cloud API connected, but TrackNetV3 is not ready. ${health.message || "The model checkpoint is not mounted on the server."}`;
+      ? `Cloud API connected · video upload ready · TrackNetV3 ready${inpaintReady ? " · InpaintNet ready" : " · InpaintNet optional model not mounted"}.`
+      : uploadReady
+        ? `Cloud API connected · video upload ready (limit ${health.upload_limit_mb || "—"} MB). TrackNetV3 is not installed yet; uploads can be tested, but AI analysis will not run.`
+        : `Cloud API connected, but video upload is not ready. ${health.message || "Upload service is not configured."}`;
   } catch (error) {
     const reason = error.name === "AbortError" ? "Health check timed out." : error.message;
     cloudStatus.textContent = `Cloud API unavailable. Your browser recording can still be captured; upload will wait until the service is reachable. (${reason})`;
@@ -999,10 +1002,12 @@ async function uploadVideoForAnalysis(blob, filename) {
   try {
     cloudStatus.textContent = "Checking cloud service before upload…";
     const health = await getCloudHealth();
-    if (!health.tracknet_ready) {
-      throw new Error(health.message || "Cloud API is online, but TrackNetV3 checkpoint is not installed yet. Your recording is preserved; retry after the model is ready.");
+    if (!health.upload_ready) {
+      throw new Error(health.message || "Cloud API is online, but video upload is not enabled yet. Your recording is preserved.");
     }
-    cloudStatus.textContent = "Cloud service ready. Starting upload…";
+    cloudStatus.textContent = health.tracknet_ready
+      ? "Cloud service and AI model ready. Starting upload…"
+      : "Cloud upload service ready. AI analysis is not installed yet; this test will verify video receipt only.";
     const result = await new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", base + "/api/v1/analyze", true);
