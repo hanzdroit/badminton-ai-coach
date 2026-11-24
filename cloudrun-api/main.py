@@ -90,7 +90,7 @@ async def analyze(file: UploadFile = File(...), match_type: str = Form("doubles"
     overrides = {"overrides":{"containerOverrides":[{"env":[
         {"name":"INPUT_URI","value":input_uri},
         {"name":"OUTPUT_URI","value":output_uri},
-        {"name":"DELETE_SOURCE_AFTER_SUCCESS","value":"false"}
+        {"name":"DELETE_SOURCE_AFTER_SUCCESS","value":"true"}
     ]}]}}
     response = session.post(RUN_URL, json=overrides, timeout=60)
     if not response.ok:
