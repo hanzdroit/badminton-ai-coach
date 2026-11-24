@@ -5,7 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#101827">
-<title>Badminton AI Coach V1.6</title>
+<title>Badminton AI Coach V1.8</title>
 
 <style>
 :root {
@@ -237,7 +237,7 @@ footer {
 <header>
   <h1>🏸 Badminton AI Coach</h1>
   <p>Live Player Detection & Skeleton Tracking</p>
-  <p>V1.6 · Auto-Connected Camera Recording</p>
+  <p>V1.8 · Cloud Preflight & Upload Protection</p>
 </header>
 
 <main>
@@ -348,11 +348,12 @@ footer {
   <h2>Match Recording</h2>
 
   <p style="font-size:13px;color:var(--muted);line-height:1.6">
-    V1.6 records video from the phone camera and structured movement data in one session. Point the phone at a laptop screen for YouTube testing, or at the court for a real match. When the app is hosted with its analysis service,
+    V1.7 records video from the phone camera and structured movement data in one session. Point the phone at a laptop screen for YouTube testing, or at the court for a real match. When the app is hosted with its analysis service,
     the video is uploaded automatically for TrackNetV3 processing and temporary server copies are deleted after analysis.
   </p>
   <p class="calibration-help" id="cloudStatus">Connecting to analysis service automatically…</p>
   <div id="cloudResults" class="calibration-help" style="display:none;margin-top:10px;padding:12px;background:#101827;border-radius:9px"></div>
+  <button id="retryUploadBtn" type="button" class="secondary" style="display:none;margin-top:10px">Retry video upload</button>
 <p class="calibration-help">Use this phone camera for both test footage (point it at a laptop screen playing a badminton video) and real-court recording.</p>
 
   <label for="serverSelect">Current Server (manual selection)</label>
@@ -411,7 +412,7 @@ footer {
 </main>
 
 <footer>
-  Badminton AI Coach V1.6 · Unified recording workflow
+  Badminton AI Coach V1.7 · Unified recording workflow
 </footer>
 
 <script type="module">
@@ -444,7 +445,10 @@ const shuttleStatus = document.getElementById("shuttleStatus");
 
 const cameraStatus = document.getElementById("cameraStatus");
 const recordStatus = document.getElementById("recordStatus");
+const APP_VERSION = "1.8";
 const CLOUD_API_BASE = window.location.origin;
+let lastUploadFilename = "";
+let uploadInProgress = false;
 const cloudStatus = document.getElementById("cloudStatus");
 const cloudResults = document.getElementById("cloudResults");
 
@@ -913,7 +917,7 @@ async function loadAI() {
 
 }
 
-// V1.6 cloud connection is automatic: frontend and API are served from the same origin.
+// V1.7 cloud connection is automatic: frontend and API are served from the same origin.
 function getRecorderMimeType() {
   const candidates = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm", "video/mp4"];
   return candidates.find(type => window.MediaRecorder && MediaRecorder.isTypeSupported(type)) || "";
@@ -922,47 +926,118 @@ function cloudHeaders() {
   // Authentication, if needed, is handled by the hosting layer/server.
   return {};
 }
-async function checkCloudConnection() {
-  cloudStatus.textContent = "Connecting to analysis service…";
+async function getCloudHealth(timeoutMs = 10000) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(CLOUD_API_BASE + "/health", { headers: cloudHeaders() });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const response = await fetch(CLOUD_API_BASE + "/health", {
+      headers: cloudHeaders(),
+      signal: controller.signal,
+      cache: "no-store"
+    });
+    if (!response.ok) throw new Error(`Health check returned HTTP ${response.status}`);
     const health = await response.json();
-    const ready = Boolean(health.tracknet_ready);
-    cloudStatus.textContent = ready
-      ? `Analysis service ready (${health.device || "device available"}).`
-      : `Service connected, but TrackNet model is not ready. ${health.message || "Model checkpoints still need to be installed on the server."}`;
-  } catch (error) {
-    cloudStatus.textContent = "Analysis service is not connected yet. The app will retry when you record. (" + error.message + ")";
+    if (health.status !== "ok") throw new Error("Cloud API returned an unexpected health status.");
+    return health;
+  } finally {
+    window.clearTimeout(timer);
   }
 }
 
+async function checkCloudConnection() {
+  cloudStatus.textContent = "Checking cloud API and AI model…";
+  try {
+    const health = await getCloudHealth();
+    const modelReady = Boolean(health.tracknet_ready);
+    const inpaintReady = Boolean(health.inpaintnet_ready);
+    cloudStatus.textContent = modelReady
+      ? `Cloud API connected · TrackNetV3 ready${inpaintReady ? " · InpaintNet ready" : " · InpaintNet optional model not mounted"}.`
+      : `Cloud API connected, but TrackNetV3 is not ready. ${health.message || "The model checkpoint is not mounted on the server."}`;
+  } catch (error) {
+    const reason = error.name === "AbortError" ? "Health check timed out." : error.message;
+    cloudStatus.textContent = `Cloud API unavailable. Your browser recording can still be captured; upload will wait until the service is reachable. (${reason})`;
+  }
+}
+
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+const retryUploadBtn = document.getElementById("retryUploadBtn");
+retryUploadBtn.addEventListener("click", () => {
+  if (recordedVideoBlob && lastUploadFilename && !uploadInProgress) {
+    uploadVideoForAnalysis(recordedVideoBlob, lastUploadFilename);
+  }
+});
+
 async function uploadVideoForAnalysis(blob, filename) {
+  if (!blob || !blob.size) {
+    cloudStatus.textContent = "Video capture failed: the browser produced an empty recording. Please record again.";
+    recordMessage("No video data was captured. Please check camera permissions and try recording again.");
+    retryUploadBtn.style.display = "none";
+    return;
+  }
+  if (uploadInProgress) return;
+  uploadInProgress = true;
+  lastUploadFilename = filename;
+  retryUploadBtn.style.display = "none";
   const base = CLOUD_API_BASE;
-const form = new FormData();
+  const form = new FormData();
   form.append("file", blob, filename);
   form.append("match_type", document.getElementById("matchType").value);
   form.append("max_players", document.getElementById("maxPlayers").value);
   form.append("source", "camera");
   form.append("movement_json", JSON.stringify(buildMovementOutput()));
-  const headers = cloudHeaders();
+  cloudResults.style.display = "block";
+  cloudResults.textContent = `Recording captured: ${formatBytes(blob.size)}. Upload starting…`;
   cloudStatus.textContent = "Uploading video and movement data… Keep this page open.";
-  cloudResults.style.display = "none";
-  recordMessage("Uploading recording to cloud. Keep this browser open until upload completes.");
+  recordMessage(`Recording saved in browser memory (${formatBytes(blob.size)}). Uploading to cloud…`);
+
   try {
-    const response = await fetch(base + "/api/v1/analyze", { method: "POST", headers, body: form });
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      throw new Error(body.detail || `Cloud API returned HTTP ${response.status}`);
+    cloudStatus.textContent = "Checking cloud service before upload…";
+    const health = await getCloudHealth();
+    if (!health.tracknet_ready) {
+      throw new Error(health.message || "Cloud API is online, but TrackNetV3 checkpoint is not installed yet. Your recording is preserved; retry after the model is ready.");
     }
-    const result = await response.json();
+    cloudStatus.textContent = "Cloud service ready. Starting upload…";
+    const result = await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", base + "/api/v1/analyze", true);
+      const headers = cloudHeaders();
+      Object.entries(headers).forEach(([key, value]) => xhr.setRequestHeader(key, value));
+      xhr.upload.onprogress = event => {
+        if (event.lengthComputable) {
+          const percent = Math.round((event.loaded / event.total) * 100);
+          cloudStatus.textContent = `Uploading video… ${percent}%`;
+          cloudResults.textContent = `Recording: ${formatBytes(blob.size)} · Uploaded: ${formatBytes(event.loaded)} / ${formatBytes(event.total)}`;
+        }
+      };
+      xhr.onload = () => {
+        let payload = {};
+        try { payload = JSON.parse(xhr.responseText || "{}"); } catch (_) {}
+        if (xhr.status >= 200 && xhr.status < 300) resolve(payload);
+        else reject(new Error(payload.detail || `Cloud API returned HTTP ${xhr.status}`));
+      };
+      xhr.onerror = () => reject(new Error("Network error. The cloud server may be unavailable or unreachable."));
+      xhr.ontimeout = () => reject(new Error("Upload timed out. Please retry with a shorter recording or a more stable connection."));
+      xhr.timeout = 30 * 60 * 1000;
+      xhr.send(form);
+    });
     if (!result.job_id) throw new Error("Cloud API response did not include job_id.");
     cloudStatus.textContent = `Upload complete. Job ${result.job_id} is ${result.status || "queued"}.`;
+    cloudResults.textContent = `Upload successful · ${formatBytes(blob.size)} · Job ${result.job_id}. Cloud analysis is starting.`;
     recordMessage("Upload complete. Cloud AI analysis has started.");
     pollAnalysisJob(base, result.job_id);
   } catch (error) {
     cloudStatus.textContent = "Upload failed: " + error.message;
-    recordMessage("Upload failed. Keep this page open and retry; no cloud result was created.");
+    cloudResults.textContent = `Your recording is still held in this browser session (${formatBytes(blob.size)}). It has not been confirmed as uploaded. You can retry when the cloud service is available.`;
+    retryUploadBtn.style.display = "inline-block";
+    recordMessage("Video was captured, but cloud upload failed: " + error.message + " You can retry without recording again while this page remains open.");
+  } finally {
+    uploadInProgress = false;
   }
 }
 
@@ -992,7 +1067,8 @@ async function pollAnalysisJob(base, jobId) {
       }
       window.setTimeout(poll, 5000);
     } catch (error) {
-      cloudStatus.textContent = "Could not check analysis status: " + error.message;
+      cloudStatus.textContent = "Could not check analysis status: " + error.message + ". Retrying shortly…";
+      window.setTimeout(poll, 10000);
     }
   };
   window.setTimeout(poll, 2500);
@@ -1000,7 +1076,7 @@ async function pollAnalysisJob(base, jobId) {
 
 function buildMovementOutput() {
   return {
-    app: "Badminton AI Coach", version: "1.6", matchType: document.getElementById("matchType").value,
+    app: "Badminton AI Coach", version: APP_VERSION, matchType: document.getElementById("matchType").value,
     maxPlayers: Number(document.getElementById("maxPlayers").value), recordingDate: new Date().toISOString(),
     durationSeconds: recordedFrames.length ? recordedFrames[recordedFrames.length-1].t : 0,
     frameCount: recordedFrames.length,
@@ -1486,7 +1562,10 @@ startRecordBtn.addEventListener("click", () => {
         const type = mediaRecorder.mimeType || "video/webm";
         recordedVideoBlob = new Blob(recordedVideoChunks, { type });
         const extension = type.includes("mp4") ? "mp4" : "webm";
-        await uploadVideoForAnalysis(recordedVideoBlob, `badminton_match_${Date.now()}.${extension}`);
+        lastUploadFilename = `badminton_match_${Date.now()}.${extension}`;
+        cloudResults.style.display = "block";
+        cloudResults.textContent = `Video captured: ${formatBytes(recordedVideoBlob.size)} · ${recordedFrames.length} movement frames. Preparing upload…`;
+        await uploadVideoForAnalysis(recordedVideoBlob, lastUploadFilename);
       };
       mediaRecorder.start(2000);
     } catch (error) {
@@ -1529,7 +1608,7 @@ stopRecordBtn.addEventListener("click", () => {
   recordMessage(
     "Recording stopped. " +
     recordedFrames.length +
-    " movement frames captured. Video upload will start automatically if the cloud API is configured."
+    " movement frames captured. Finalising video recording and preparing cloud upload…"
   );
 
 });
@@ -1555,7 +1634,7 @@ exportBtn.addEventListener("click", () => {
 
   URL.revokeObjectURL(url);
 
-  recordMessage("V1.6 movement, court-coordinate and experimental shuttle-candidate JSON exported successfully.");
+  recordMessage("V1.7 movement, court-coordinate and experimental shuttle-candidate JSON exported successfully.");
 
 });
 
