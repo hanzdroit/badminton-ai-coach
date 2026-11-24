@@ -161,7 +161,7 @@ def complete_upload(job_id: str):
     ]}]}}
     response = session.post(RUN_URL,json=overrides,timeout=60)
     if not response.ok:
-        bucket.blob(movement_name).delete()
+        bucket.blob(job["movement_path"]).delete()
         raise HTTPException(502,f"Could not start TrackNet job: {response.text[:1200]}")
     operation = response.json()
     job.update({"status":"queued","progress":0,"operation_name":operation.get("name"),
