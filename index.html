@@ -5,7 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#101827">
-<title>Badminton AI Coach V1.9</title>
+<title>Badminton AI Coach V2.1</title>
 
 <style>
 :root {
@@ -237,7 +237,7 @@ footer {
 <header>
   <h1>🏸 Badminton AI Coach</h1>
   <p>Live Player Detection & Skeleton Tracking</p>
-  <p>V1.9 · Cloud TrackNet Analysis</p>
+  <p>V2.1 · Direct Cloud Storage Upload · TrackNet Analysis</p>
 </header>
 
 <main>
@@ -1030,7 +1030,7 @@ document.getElementById("newSessionBtn")?.addEventListener("click", async () => 
 
 async function uploadVideoForAnalysis(blob, filename) {
   if (!blob || !blob.size) {
-    cloudStatus.textContent = "Video capture failed: the browser produced an empty recording. Please record again.";
+    cloudStatus.textContent = "Video capture failed: the browser produced an empty recording.";
     recordMessage("No video data was captured. Please check camera permissions and try recording again.");
     retryUploadBtn.style.display = "none";
     return;
@@ -1040,63 +1040,81 @@ async function uploadVideoForAnalysis(blob, filename) {
   lastUploadFilename = filename;
   retryUploadBtn.style.display = "none";
   const base = CLOUD_API_BASE;
-  const form = new FormData();
-  if (!activeSessionId) await createCloudSession();
-  form.append("session_id", activeSessionId);
-  form.append("file", blob, filename);
-  form.append("match_type", document.getElementById("matchType").value);
-  form.append("max_players", document.getElementById("maxPlayers").value);
-  form.append("source", "camera");
-  form.append("movement_json", JSON.stringify(buildMovementOutput()));
   cloudResults.style.display = "block";
-  cloudResults.textContent = `Recording captured: ${formatBytes(blob.size)}. Upload starting…`;
-  cloudStatus.textContent = "Uploading video and movement data… Keep this page open.";
-  recordMessage(`Recording saved in browser memory (${formatBytes(blob.size)}). Uploading to cloud…`);
+  cloudResults.textContent = `Recording captured: ${formatBytes(blob.size)}. Preparing secure cloud upload…`;
+  cloudStatus.textContent = "Preparing direct upload to Google Cloud Storage…";
+  recordMessage(`Recording saved in browser memory (${formatBytes(blob.size)}). Preparing direct cloud upload…`);
 
   try {
-    cloudStatus.textContent = "Checking cloud service before upload…";
+    if (!activeSessionId) await createCloudSession();
     const health = await getCloudHealth();
-    if (!health.upload_ready) {
-      throw new Error(health.message || "Cloud API is online, but video upload is not enabled yet. Your recording is preserved.");
-    }
-    const maxUploadBytes = Number(health.upload_limit_mb || 30) * 1024 * 1024;
+    const maxUploadBytes = Number(health.upload_limit_mb || 500) * 1024 * 1024;
     if (blob.size > maxUploadBytes) {
-      throw new Error("Recording exceeds the current cloud upload limit. Keep this recording in the page and record a shorter clip.");
+      throw new Error(`Recording exceeds the ${health.upload_limit_mb || 500} MB cloud upload limit.`);
     }
-    cloudStatus.textContent = health.tracknet_ready
-      ? "Cloud service and AI model ready. Starting upload…"
-      : "Cloud upload service ready. AI analysis is not installed yet; this test will verify video receipt only.";
-    const result = await new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", base + "/api/v1/analyze", true);
-      const headers = cloudHeaders();
-      Object.entries(headers).forEach(([key, value]) => xhr.setRequestHeader(key, value));
-      xhr.upload.onprogress = event => {
-        if (event.lengthComputable) {
-          const percent = Math.round((event.loaded / event.total) * 100);
-          cloudStatus.textContent = `Uploading video… ${percent}%`;
-          cloudResults.textContent = `Recording: ${formatBytes(blob.size)} · Uploaded: ${formatBytes(event.loaded)} / ${formatBytes(event.total)}`;
-        }
-      };
-      xhr.onload = () => {
-        let payload = {};
-        try { payload = JSON.parse(xhr.responseText || "{}"); } catch (_) {}
-        if (xhr.status >= 200 && xhr.status < 300) resolve(payload);
-        else reject(new Error(payload.detail || `Cloud API returned HTTP ${xhr.status}`));
-      };
-      xhr.onerror = () => reject(new Error("Network error. The cloud server may be unavailable or unreachable."));
-      xhr.ontimeout = () => reject(new Error("Upload timed out. Please retry with a shorter recording or a more stable connection."));
-      xhr.timeout = 30 * 60 * 1000;
-      xhr.send(form);
+
+    const initForm = new FormData();
+    initForm.append("session_id", activeSessionId);
+    initForm.append("filename", filename);
+    initForm.append("size_bytes", String(blob.size));
+    initForm.append("content_type", blob.type || "application/octet-stream");
+    initForm.append("match_type", document.getElementById("matchType").value);
+    initForm.append("max_players", document.getElementById("maxPlayers").value);
+    initForm.append("source", "camera");
+    initForm.append("origin", window.location.origin);
+
+    const initResponse = await fetch(base + "/api/v1/uploads", {
+      method:"POST", headers:cloudHeaders(), body:initForm
     });
-    if (!result.job_id) throw new Error("Cloud API response did not include job_id.");
+    const initData = await initResponse.json().catch(() => ({}));
+    if (!initResponse.ok) throw new Error(initData.detail || `Could not start upload (HTTP ${initResponse.status}).`);
+    if (!initData.upload_url || !initData.job_id) throw new Error("Cloud API did not return a resumable upload URL.");
+
+    const chunkSize = Number(initData.chunk_size_bytes || 8 * 1024 * 1024);
+    let offset = 0;
+    while (offset < blob.size) {
+      const endExclusive = Math.min(offset + chunkSize, blob.size);
+      const chunk = blob.slice(offset, endExclusive);
+      const responseStatus = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("PUT", initData.upload_url, true);
+        xhr.setRequestHeader("Content-Type", blob.type || "application/octet-stream");
+        xhr.setRequestHeader("Content-Range", `bytes ${offset}-${endExclusive - 1}/${blob.size}`);
+        xhr.upload.onprogress = event => {
+          const uploaded = offset + (event.lengthComputable ? event.loaded : 0);
+          const percent = Math.min(100, Math.round(uploaded / blob.size * 100));
+          cloudStatus.textContent = `Uploading directly to Cloud Storage… ${percent}%`;
+          cloudResults.textContent = `Recording: ${formatBytes(blob.size)} · Uploaded: ${formatBytes(uploaded)} / ${formatBytes(blob.size)}`;
+        };
+        xhr.onload = () => {
+          if (xhr.status === 308 || xhr.status === 200 || xhr.status === 201) resolve(xhr.status);
+          else reject(new Error(`Cloud Storage upload returned HTTP ${xhr.status}.`));
+        };
+        xhr.onerror = () => reject(new Error("Direct Cloud Storage upload failed. Check the bucket CORS configuration and network connection."));
+        xhr.ontimeout = () => reject(new Error("Cloud Storage upload timed out."));
+        xhr.timeout = 30 * 60 * 1000;
+        xhr.send(chunk);
+      });
+      offset = endExclusive;
+      cloudStatus.textContent = `Uploading directly to Cloud Storage… ${Math.round(offset / blob.size * 100)}%`;
+      if (responseStatus === 200 || responseStatus === 201) break;
+    }
+
+    cloudStatus.textContent = "Video uploaded. Sending movement data and starting AI analysis…";
+    const completeForm = new FormData();
+    completeForm.append("movement_json", JSON.stringify(buildMovementOutput()));
+    const completeResponse = await fetch(base + `/api/v1/uploads/${encodeURIComponent(initData.job_id)}/complete`, {
+      method:"POST", headers:cloudHeaders(), body:completeForm
+    });
+    const result = await completeResponse.json().catch(() => ({}));
+    if (!completeResponse.ok) throw new Error(result.detail || `Upload completion failed (HTTP ${completeResponse.status}).`);
     cloudStatus.textContent = `Upload complete. Job ${result.job_id} is ${result.status || "queued"}.`;
     cloudResults.textContent = `Upload successful · ${formatBytes(blob.size)} · Job ${result.job_id}. Cloud analysis is starting.`;
-    recordMessage("Upload complete. Cloud AI analysis has started.");
+    recordMessage("Direct video upload to Cloud Storage completed. Cloud AI analysis has started.");
     pollAnalysisJob(base, result.job_id);
   } catch (error) {
     cloudStatus.textContent = "Upload failed: " + error.message;
-    cloudResults.textContent = `Your recording is still held in this browser session (${formatBytes(blob.size)}). It has not been confirmed as uploaded. You can retry when the cloud service is available.`;
+    cloudResults.textContent = `Your recording remains in this browser session (${formatBytes(blob.size)}). The cloud upload or job start was not confirmed. You can retry while this page remains open.`;
     retryUploadBtn.style.display = "inline-block";
     recordMessage("Video was captured, but cloud upload failed: " + error.message + " You can retry without recording again while this page remains open.");
   } finally {
@@ -1119,9 +1137,10 @@ async function pollAnalysisJob(base, jobId) {
           const resultResponse = await fetch(base + `/api/v1/jobs/${encodeURIComponent(jobId)}/result`, { headers: cloudHeaders() });
           if (resultResponse.ok) {
             const data = await resultResponse.json();
+            await refreshMatchHistory();
             const points = data.shuttle?.points || [];
             const visible = points.filter(p => p.visibility && p.x > 0 && p.y > 0).length;
-            cloudResults.innerHTML = `<strong>Analysis complete</strong><br>Video frames: ${data.video?.frame_count ?? "—"}<br>Shuttle points detected: ${visible}<br>Player movement frames: ${data.movement?.frameCount ?? 0}<br><small>Raw recorded camera video was deleted from the processing workspace after analysis.</small>`;
+            cloudResults.innerHTML = `<strong>Analysis complete</strong><br>Video frames: ${data.video?.frame_count ?? "—"}<br>Shuttle points detected: ${visible}<br>Player movement frames: ${data.movement?.frameCount ?? 0}<br><small>Raw camera video was deleted only after stored results were successfully verified.</small>`;
             cloudResults.style.display = "block";
           }
         } else if (job.upload?.received) {
