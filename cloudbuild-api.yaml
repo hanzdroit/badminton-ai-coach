@@ -2,7 +2,7 @@ substitutions:
   _REGION: asia-southeast1
   _REPOSITORY: badminton-ai
   _IMAGE: badminton-cloud-api
-  _TAG: v1.9
+  _TAG: v2.1
 
 steps:
   - name: gcr.io/cloud-builders/docker
