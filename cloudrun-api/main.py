@@ -5,15 +5,15 @@ from urllib.parse import quote
 import google.auth
 from google.auth.transport.requests import AuthorizedSession
 from google.cloud import storage
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 PROJECT_ID = os.environ["GCP_PROJECT_ID"]
 REGION = os.getenv("GCP_REGION", "asia-southeast1")
 JOB_NAME = os.getenv("TRACKNET_JOB_NAME", "badminton-tracknet-worker")
 BUCKET_NAME = os.environ["GCS_BUCKET"]
-UPLOAD_LIMIT_MB = int(os.getenv("UPLOAD_LIMIT_MB", "30"))
-API_VERSION = "2.0-multi-match-api"
+UPLOAD_LIMIT_MB = int(os.getenv("UPLOAD_LIMIT_MB", "500"))
+API_VERSION = "2.1-direct-gcs-resumable"
 
 app = FastAPI(title="Badminton AI Coach Cloud API", version=API_VERSION)
 origins = [x.strip() for x in os.getenv("ALLOWED_ORIGINS", "*").split(",") if x.strip()]
@@ -38,7 +38,9 @@ def write_session(data):
     bucket.blob(session_doc_path(data["session_id"])).upload_from_string(json.dumps(data), content_type="application/json")
 def update_session_match(session_id, match):
     data = read_session(session_id)
-    data["matches"] = [m for m in data.get("matches", []) if m.get("job_id") != match.get("job_id")] + [match]
+    existing = next((m for m in data.get("matches", []) if m.get("job_id") == match.get("job_id")), {})
+    merged = {**existing, **match}
+    data["matches"] = [m for m in data.get("matches", []) if m.get("job_id") != match.get("job_id")] + [merged]
     from datetime import datetime, timezone
     data["updated_at"] = datetime.now(timezone.utc).isoformat()
     write_session(data)
@@ -56,7 +58,7 @@ def root():
 @app.get("/health")
 def health():
     return {"status":"ok","version":API_VERSION,"api_ready":True,"upload_ready":True,
-            "tracknet_ready":True,"inpaintnet_ready":True,"upload_limit_mb":UPLOAD_LIMIT_MB,
+            "tracknet_ready":True,"inpaintnet_ready":True,"upload_limit_mb":UPLOAD_LIMIT_MB,"upload_mode":"direct_gcs_resumable",
             "message":"Cloud Run API is connected to Cloud Storage and the TrackNet Cloud Run Job."}
 
 @app.post("/api/v1/sessions")
@@ -82,67 +84,88 @@ def list_sessions():
 def get_session(session_id: str):
     return read_session(session_id)
 
-@app.post("/api/v1/analyze")
-async def analyze(file: UploadFile = File(...), session_id: str = Form(...), match_type: str = Form("doubles"),
-                  max_players: int = Form(4), source: str = Form("camera"),
-                  movement_json: str = Form("{}")):
+@app.post("/api/v1/uploads")
+def create_upload(session_id: str = Form(...), filename: str = Form("match.webm"),
+                  size_bytes: int = Form(...), content_type: str = Form("application/octet-stream"),
+                  match_type: str = Form("doubles"), max_players: int = Form(4),
+                  source: str = Form("camera"), origin: str = Form("")):
     if match_type not in ("singles","doubles"): raise HTTPException(400,"Invalid match_type.")
     if max_players not in (1,2,3,4): raise HTTPException(400,"max_players must be 1-4.")
     if source != "camera": raise HTTPException(400,"Only camera recordings are accepted.")
-    try: movement = json.loads(movement_json)
-    except json.JSONDecodeError: raise HTTPException(400,"movement_json must be valid JSON.")
-    if not isinstance(movement,dict): raise HTTPException(400,"movement_json must be an object.")
-
+    if size_bytes <= 0: raise HTTPException(400,"Uploaded video is empty.")
+    max_bytes = UPLOAD_LIMIT_MB * 1024 * 1024
+    if size_bytes > max_bytes: raise HTTPException(413,f"Recording exceeds {UPLOAD_LIMIT_MB} MB limit.")
     read_session(session_id)
-    filename = Path(file.filename or "match.webm").name
-    suffix = Path(filename).suffix.lower()
+    safe_filename = Path(filename or "match.webm").name
+    suffix = Path(safe_filename).suffix.lower()
     if suffix not in (".webm",".mp4",".mov",".m4v"): suffix = ".webm"
     job_id = str(uuid.uuid4())
     object_name = f"input/{job_id}{suffix}"
     video_blob = bucket.blob(object_name)
-    total = 0
     try:
-        # Stream upload to a temporary file is avoided; the GCS blob receives
-        # the request stream in chunks and enforces the configured size limit.
-        chunks = []
-        while True:
-            chunk = await file.read(1024 * 1024)
-            if not chunk: break
-            total += len(chunk)
-            if total > UPLOAD_LIMIT_MB * 1024 * 1024:
-                raise HTTPException(413, f"Recording exceeds {UPLOAD_LIMIT_MB} MB test limit.")
-            chunks.append(chunk)
-        if total == 0: raise HTTPException(400,"Uploaded video is empty.")
-        video_blob.upload_from_string(b"".join(chunks), content_type=file.content_type or "application/octet-stream")
-    except Exception:
-        if video_blob.exists(): video_blob.delete()
-        raise
-    finally:
-        await file.close()
+        upload_url = video_blob.create_resumable_upload_session(
+            content_type=content_type or "application/octet-stream",
+            origin=origin or None
+        )
+    except Exception as exc:
+        raise HTTPException(502,f"Could not create resumable Storage upload: {exc}")
+    from datetime import datetime, timezone
+    job = {"job_id":job_id,"status":"uploading","progress":0,"input_uri":f"gs://{BUCKET_NAME}/{object_name}",
+           "output_uri":f"gs://{BUCKET_NAME}/results/{job_id}","filename":safe_filename,
+           "size_bytes":size_bytes,"match_type":match_type,"max_players":max_players,
+           "session_id":session_id,"result_verified":False,"source_deleted":False,
+           "created_at":datetime.now(timezone.utc).isoformat()}
+    write_job(job)
+    update_session_match(session_id, {"job_id":job_id,"filename":safe_filename,"status":"uploading",
+        "created_at":job["created_at"],"size_bytes":size_bytes,"match_type":match_type,
+        "max_players":max_players,"result_verified":False})
+    return {"job_id":job_id,"session_id":session_id,"status":"uploading","upload_url":upload_url,
+            "chunk_size_bytes":8*1024*1024,"max_upload_mb":UPLOAD_LIMIT_MB}
 
+@app.post("/api/v1/uploads/{job_id}/complete")
+def complete_upload(job_id: str, movement_json: str = Form("{}")):
+    job = read_job(job_id)
+    if job.get("status") != "uploading": raise HTTPException(409,"Upload is not awaiting completion.")
+    try:
+        movement = json.loads(movement_json)
+    except json.JSONDecodeError:
+        raise HTTPException(400,"movement_json must be valid JSON.")
+    if not isinstance(movement,dict) or not isinstance(movement.get("frames"),list):
+        raise HTTPException(400,"movement_json must contain a frames array.")
+    input_uri = job.get("input_uri","")
+    if not input_uri.startswith(f"gs://{BUCKET_NAME}/"):
+        raise HTTPException(500,"Invalid upload destination.")
+    object_name = input_uri.split(f"gs://{BUCKET_NAME}/",1)[1]
+    video_blob = bucket.blob(object_name)
+    if not video_blob.exists():
+        raise HTTPException(409,"Video upload is not present in Cloud Storage yet.")
+    video_blob.reload()
+    actual_size = int(video_blob.size or 0)
+    if actual_size != int(job.get("size_bytes",0)):
+        raise HTTPException(409,f"Uploaded video size mismatch: expected {job.get('size_bytes')} bytes, received {actual_size}.")
     movement_name = f"jobs/{job_id}.movement.json"
-    bucket.blob(movement_name).upload_from_string(json.dumps(movement), content_type="application/json")
-    input_uri = f"gs://{BUCKET_NAME}/{object_name}"
-    output_uri = f"gs://{BUCKET_NAME}/results/{job_id}"
+    bucket.blob(movement_name).upload_from_string(json.dumps(movement),content_type="application/json")
     overrides = {"overrides":{"containerOverrides":[{"env":[
         {"name":"INPUT_URI","value":input_uri},
-        {"name":"OUTPUT_URI","value":output_uri},
+        {"name":"OUTPUT_URI","value":job["output_uri"]},
         {"name":"DELETE_SOURCE_AFTER_SUCCESS","value":"false"}
     ]}]}}
-    response = session.post(RUN_URL, json=overrides, timeout=60)
+    response = session.post(RUN_URL,json=overrides,timeout=60)
     if not response.ok:
-        video_blob.delete()
         bucket.blob(movement_name).delete()
-        raise HTTPException(502, f"Could not start TrackNet job: {response.text[:1200]}")
+        raise HTTPException(502,f"Could not start TrackNet job: {response.text[:1200]}")
     operation = response.json()
-    job = {"job_id":job_id,"status":"queued","progress":0,"operation_name":operation.get("name"),
-           "input_uri":input_uri,"output_uri":output_uri,"movement_path":movement_name,
-           "filename":filename,"size_bytes":total,"movement_frame_count":movement.get("frameCount",0),"match_type":match_type,"max_players":max_players,"session_id":session_id,"result_verified":False,"source_deleted":False}
+    job.update({"status":"queued","progress":0,"operation_name":operation.get("name"),
+                "movement_path":movement_name,"movement_frame_count":movement.get("frameCount",0)})
     write_job(job)
-    from datetime import datetime, timezone
-    update_session_match(session_id, {"job_id":job_id,"filename":filename,"status":"queued","created_at":datetime.now(timezone.utc).isoformat(),"size_bytes":total,"match_type":match_type,"max_players":max_players,"result_verified":False})
-    return {"job_id":job_id,"session_id":session_id,"status":"queued","upload_received":True,"video_size_bytes":total,
-            "movement_frame_count":movement.get("frameCount",0),"message":"Video uploaded and TrackNet job queued."}
+    update_session_match(job["session_id"], {"job_id":job_id,"filename":job.get("filename"),
+        "status":"queued","created_at":job.get("created_at"),"size_bytes":actual_size,
+        "match_type":job.get("match_type"),"max_players":job.get("max_players"),
+        "result_verified":False})
+    return {"job_id":job_id,"session_id":job["session_id"],"status":"queued",
+            "upload_received":True,"video_size_bytes":actual_size,
+            "movement_frame_count":movement.get("frameCount",0),
+            "message":"Resumable video upload verified in Storage and TrackNet job queued."}
 
 @app.get("/api/v1/jobs/{job_id}")
 def job_status(job_id: str):
