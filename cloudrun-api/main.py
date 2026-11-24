@@ -102,9 +102,15 @@ def create_upload(session_id: str = Form(...), filename: str = Form("match.webm"
     job_id = str(uuid.uuid4())
     object_name = f"input/{job_id}{suffix}"
     video_blob = bucket.blob(object_name)
+    movement_name = f"jobs/{job_id}.movement.json"
+    movement_blob = bucket.blob(movement_name)
     try:
         upload_url = video_blob.create_resumable_upload_session(
             content_type=content_type or "application/octet-stream",
+            origin=origin or None
+        )
+        movement_upload_url = movement_blob.create_resumable_upload_session(
+            content_type="application/json",
             origin=origin or None
         )
     except Exception as exc:
@@ -113,25 +119,30 @@ def create_upload(session_id: str = Form(...), filename: str = Form("match.webm"
     job = {"job_id":job_id,"status":"uploading","progress":0,"input_uri":f"gs://{BUCKET_NAME}/{object_name}",
            "output_uri":f"gs://{BUCKET_NAME}/results/{job_id}","filename":safe_filename,
            "size_bytes":size_bytes,"match_type":match_type,"max_players":max_players,
-           "session_id":session_id,"result_verified":False,"source_deleted":False,
+           "session_id":session_id,"movement_path":movement_name,
+           "result_verified":False,"source_deleted":False,
            "created_at":datetime.now(timezone.utc).isoformat()}
     write_job(job)
     update_session_match(session_id, {"job_id":job_id,"filename":safe_filename,"status":"uploading",
         "created_at":job["created_at"],"size_bytes":size_bytes,"match_type":match_type,
         "max_players":max_players,"result_verified":False})
     return {"job_id":job_id,"session_id":session_id,"status":"uploading","upload_url":upload_url,
+            "movement_upload_url":movement_upload_url,
             "chunk_size_bytes":8*1024*1024,"max_upload_mb":UPLOAD_LIMIT_MB}
 
 @app.post("/api/v1/uploads/{job_id}/complete")
-def complete_upload(job_id: str, movement_json: str = Form("{}")):
+def complete_upload(job_id: str):
     job = read_job(job_id)
     if job.get("status") != "uploading": raise HTTPException(409,"Upload is not awaiting completion.")
+    movement_blob = bucket.blob(job["movement_path"])
+    if not movement_blob.exists():
+        raise HTTPException(409,"Movement data upload is not present in Cloud Storage yet.")
     try:
-        movement = json.loads(movement_json)
-    except json.JSONDecodeError:
-        raise HTTPException(400,"movement_json must be valid JSON.")
+        movement = json.loads(movement_blob.download_as_text())
+    except Exception as exc:
+        raise HTTPException(400,f"Movement JSON upload is invalid: {exc}")
     if not isinstance(movement,dict) or not isinstance(movement.get("frames"),list):
-        raise HTTPException(400,"movement_json must contain a frames array.")
+        raise HTTPException(400,"Movement JSON must contain a frames array.")
     input_uri = job.get("input_uri","")
     if not input_uri.startswith(f"gs://{BUCKET_NAME}/"):
         raise HTTPException(500,"Invalid upload destination.")
@@ -143,8 +154,6 @@ def complete_upload(job_id: str, movement_json: str = Form("{}")):
     actual_size = int(video_blob.size or 0)
     if actual_size != int(job.get("size_bytes",0)):
         raise HTTPException(409,f"Uploaded video size mismatch: expected {job.get('size_bytes')} bytes, received {actual_size}.")
-    movement_name = f"jobs/{job_id}.movement.json"
-    bucket.blob(movement_name).upload_from_string(json.dumps(movement),content_type="application/json")
     overrides = {"overrides":{"containerOverrides":[{"env":[
         {"name":"INPUT_URI","value":input_uri},
         {"name":"OUTPUT_URI","value":job["output_uri"]},
@@ -156,7 +165,7 @@ def complete_upload(job_id: str, movement_json: str = Form("{}")):
         raise HTTPException(502,f"Could not start TrackNet job: {response.text[:1200]}")
     operation = response.json()
     job.update({"status":"queued","progress":0,"operation_name":operation.get("name"),
-                "movement_path":movement_name,"movement_frame_count":movement.get("frameCount",0)})
+                "movement_frame_count":movement.get("frameCount",0)})
     write_job(job)
     update_session_match(job["session_id"], {"job_id":job_id,"filename":job.get("filename"),
         "status":"queued","created_at":job.get("created_at"),"size_bytes":actual_size,
