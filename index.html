@@ -1155,11 +1155,21 @@ function startAnnotatedRecording() {
   annotatedCanvas.width = video.videoWidth || canvas.width || 1280;
   annotatedCanvas.height = video.videoHeight || canvas.height || 720;
   annotatedContext = annotatedCanvas.getContext("2d");
-  const compositeStream = annotatedCanvas.captureStream(30);
+  // This stream has no audio track, so use a video-only codec.
+  const compositeStream = annotatedCanvas.captureStream(20);
   const compositeTrack = compositeStream.getVideoTracks()[0];
-  const mimeType = getRecorderMimeType();
+  const annotatedMimeCandidates = [
+    "video/webm;codecs=vp8",
+    "video/webm;codecs=vp9",
+    "video/webm",
+    "video/mp4"
+  ];
+  const annotatedMimeType = annotatedMimeCandidates.find(type => MediaRecorder.isTypeSupported(type)) || "";
   try {
-    annotatedRecorder = new MediaRecorder(compositeStream, mimeType ? { mimeType } : undefined);
+    annotatedRecorder = new MediaRecorder(
+      compositeStream,
+      annotatedMimeType ? { mimeType: annotatedMimeType } : undefined
+    );
     annotatedVideoChunks = [];
     annotatedVideoBlob = null;
     annotatedRecordingReady = new Promise(resolve => { resolveAnnotatedRecording = resolve; });
@@ -1204,6 +1214,7 @@ function startAnnotatedRecording() {
       if (canvas.width && canvas.height) annotatedContext.drawImage(canvas, 0, 0, annotatedCanvas.width, annotatedCanvas.height);
     }
     annotatedRecorder.start(1000);
+    localBackupStatus.textContent = "AI Detection Video recorder started. P1–P4 overlay is being captured.";
     drawCompositeFrame();
   } catch (error) {
     compositeStream.getTracks().forEach(track => track.stop());
