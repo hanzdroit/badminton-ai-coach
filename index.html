@@ -4,16 +4,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#101827">
+<meta name="theme-color" content="#081426">
 <title>Badminton AI Coach V2.2</title>
 
 <style>
 :root {
-  --bg:#101827;
-  --panel:#1c293a;
-  --border:#304158;
-  --muted:#9aabc0;
-  --green:#36d399;
+  --bg:#081426;
+  --panel:#10213a;
+  --border:#294365;
+  --muted:#a8bad2;
+  --accent-blue:#6ea8ff;
+  --button-navy:#244a78;
   --yellow:#ffdc55;
 }
 
@@ -58,8 +59,8 @@ button,select {
 }
 
 button {
-  background:var(--green);
-  color:#08251c;
+  background:var(--button-navy);
+  color:#ffffff;
   font-weight:bold;
   cursor:pointer;
   margin-top:9px;
@@ -80,10 +81,10 @@ button:disabled {
   cursor:not-allowed;
 }
 input[type=file] { font-size:12px; }
-a { color:var(--green); }
+a { color:var(--accent-blue); }
 
 select {
-  background:#101827;
+  background:#081426;
   color:white;
   border:1px solid var(--border);
   margin-bottom:12px;
@@ -132,7 +133,7 @@ label {
 }
 
 .status {
-  color:var(--green);
+  color:var(--accent-blue);
   font-size:13px;
   line-height:1.6;
   margin-top:12px;
@@ -146,7 +147,7 @@ label {
 }
 
 .stat {
-  background:#101827;
+  background:#081426;
   border-radius:9px;
   padding:12px 5px;
   text-align:center;
@@ -155,7 +156,7 @@ label {
 .stat strong {
   display:block;
   font-size:21px;
-  color:var(--green);
+  color:var(--accent-blue);
 }
 
 .stat span {
@@ -201,7 +202,7 @@ label {
 .calibration-actions button { margin-top:0; }
 
 .calibration-status {
-  color:var(--green);
+  color:var(--accent-blue);
   font-size:13px;
   line-height:1.6;
   margin-top:12px;
@@ -221,7 +222,7 @@ label {
   font-size:13px;
   margin:10px 0 4px;
 }
-.shuttle-toggle input { width:18px; height:18px; accent-color:var(--green); }
+.shuttle-toggle input { width:18px; height:18px; accent-color:var(--accent-blue); }
 .shuttle-legend { font-size:12px; color:var(--muted); line-height:1.8; }
 .me-selection-preview {
   display:block; width:100%; max-height:360px; object-fit:contain;
@@ -368,9 +369,9 @@ footer {
     the video is uploaded automatically for TrackNetV3 processing and temporary server copies are deleted after analysis.
   </p>
   <p class="calibration-help" id="cloudStatus">Connecting to analysis service automatically…</p>
-  <div id="cloudResults" class="calibration-help" style="display:none;margin-top:10px;padding:12px;background:#101827;border-radius:9px"></div>
+  <div id="cloudResults" class="calibration-help" style="display:none;margin-top:10px;padding:12px;background:#081426;border-radius:9px"></div>
   <button id="retryUploadBtn" type="button" class="secondary" style="display:none;margin-top:10px">Retry video upload</button>
-  <div id="meSelectionPanel" style="display:none;margin-top:14px;padding:14px;background:#101827;border:1px solid var(--border);border-radius:10px">
+  <div id="meSelectionPanel" style="display:none;margin-top:14px;padding:14px;background:#081426;border:1px solid var(--border);border-radius:10px">
     <h2 style="margin-bottom:6px">Which one is you?</h2>
     <p class="calibration-help">Choose your player label from the last detected frame. This is saved for this match and is separate from the current server.</p>
     <canvas id="mePreviewCanvas" class="me-selection-preview"></canvas>
@@ -662,7 +663,7 @@ function drawCalibrationOverlay() {
     ctx.beginPath();
     ctx.arc(x, y, Math.max(8, w / 75), 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = "#101827";
+    ctx.fillStyle = "#081426";
     ctx.textAlign = "center";
     ctx.fillText(String(index + 1), x, y + Math.max(5, w / 230));
     ctx.fillStyle = "#ffdc55";
@@ -1025,7 +1026,7 @@ async function refreshMatchHistory() {
     listEl.innerHTML = "";
     (data.sessions || []).forEach(session => {
       const section = document.createElement("div");
-      section.style.cssText = "padding:10px;margin:8px 0;background:#101827;border-radius:8px";
+      section.style.cssText = "padding:10px;margin:8px 0;background:#081426;border-radius:8px";
       const heading = document.createElement("strong");
       heading.textContent = "Session " + session.session_id.slice(0,8) + " · " + (session.matches || []).length + " match(es)";
       section.appendChild(heading);
@@ -1473,7 +1474,7 @@ function drawGroundMarker(track) {
   const x = track.feet.x * w;
   const y = track.feet.y * h;
   const isServer = activeServerId === track.id;
-  const color = isServer ? "#ffdc55" : "#36d399";
+  const color = isServer ? "#ffdc55" : "#6ea8ff";
 
   // Slight perspective scaling: markers become a little larger nearer the camera.
   const perspective = Math.max(0.75, Math.min(1.35, 0.78 + track.feet.y * 0.42));
@@ -1483,7 +1484,7 @@ function drawGroundMarker(track) {
   ctx.save();
   ctx.beginPath();
   ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
-  ctx.fillStyle = isServer ? "rgba(255,220,85,0.20)" : "rgba(54,211,153,0.16)";
+  ctx.fillStyle = isServer ? "rgba(255,220,85,0.20)" : "rgba(110,168,255,0.16)";
   ctx.fill();
   ctx.lineWidth = Math.max(2, w / 520);
   ctx.strokeStyle = color;
@@ -1501,7 +1502,7 @@ function drawPlayer(track) {
   const h = canvas.height;
 
   ctx.lineWidth = Math.max(2, w/500);
-  ctx.strokeStyle = "#36d399";
+  ctx.strokeStyle = "#6ea8ff";
   ctx.lineCap = "round";
 
   for (const [a,b] of CONNECTIONS) {
