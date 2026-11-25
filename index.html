@@ -5,7 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#081426">
-<title>Badminton AI Coach V2.3</title>
+<title>Badminton AI Coach V2.4</title>
 
 <style>
 :root {
@@ -246,7 +246,7 @@ footer {
 <header>
   <h1>🏸 Badminton AI Coach</h1>
   <p>Live Player Detection & Skeleton Tracking</p>
-  <p>V2.3 · Local Backup · Direct Cloud Storage Upload · Me Player Selection · TrackNet Analysis</p>
+  <p>V2.4 · AI Detection Video Export · Local Backup · Direct Cloud Storage Upload · Me Player Selection · TrackNet Analysis</p>
 </header>
 
 <main>
@@ -376,6 +376,7 @@ footer {
     <p class="calibration-help">You can save a local copy of your recording and movement data at any time after recording.</p>
     <button id="saveVideoBtn" type="button" disabled>Save Video to Device</button>
     <button id="saveMovementBtn" type="button" class="secondary" disabled>Save Movement JSON to Device</button>
+    <button id="saveAnnotatedBtn" type="button" class="secondary" disabled>Save AI Detection Video to Device</button>
     <p id="localBackupStatus" class="calibration-help" style="margin:8px 0 0">Save options will become available after you finish a recording.</p>
   </div>
   <div id="meSelectionPanel" style="display:none;margin-top:14px;padding:14px;background:#081426;border:1px solid var(--border);border-radius:10px">
@@ -444,7 +445,7 @@ footer {
 </main>
 
 <footer>
-  Badminton AI Coach V2.3 · Local backup and unified recording workflow
+  Badminton AI Coach V2.4 · AI detection video and local backup workflow
 </footer>
 
 <script type="module">
@@ -477,7 +478,7 @@ const shuttleStatus = document.getElementById("shuttleStatus");
 
 const cameraStatus = document.getElementById("cameraStatus");
 const recordStatus = document.getElementById("recordStatus");
-const APP_VERSION = "2.3";
+const APP_VERSION = "2.4";
 let activeSessionId = localStorage.getItem("badmintonActiveSessionId") || null;
 const CLOUD_API_BASE = "https://badminton-cloud-api-330288568190.asia-southeast1.run.app";
 let lastUploadFilename = "";
@@ -494,6 +495,14 @@ let landmarker = null;
 let mediaRecorder = null;
 let recordedVideoChunks = [];
 let recordedVideoBlob = null;
+let annotatedRecorder = null;
+let annotatedVideoChunks = [];
+let annotatedVideoBlob = null;
+let annotatedCanvas = null;
+let annotatedContext = null;
+let annotatedAnimationId = null;
+let annotatedRecordingReady = Promise.resolve(null);
+let resolveAnnotatedRecording = null;
 let activeInputMode = "camera";
 let cameraRunning = false;
 let isRecording = false;
@@ -1013,6 +1022,7 @@ retryUploadBtn.addEventListener("click", () => {
 
 const localBackupActions = document.getElementById("localBackupActions");
 const localBackupStatus = document.getElementById("localBackupStatus");
+const saveAnnotatedBtn = document.getElementById("saveAnnotatedBtn");
 document.getElementById("saveVideoBtn").addEventListener("click", () => {
   if (!recordedVideoBlob || !recordedVideoBlob.size) {
     localBackupStatus.textContent = "No captured video is available to save.";
@@ -1027,6 +1037,22 @@ document.getElementById("saveVideoBtn").addEventListener("click", () => {
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 60000);
   localBackupStatus.textContent = "Video download requested. Check your device's Downloads folder.";
+});
+saveAnnotatedBtn.addEventListener("click", () => {
+  if (!annotatedVideoBlob || !annotatedVideoBlob.size) {
+    localBackupStatus.textContent = "The AI detection video is not ready yet. Wait until recording has fully stopped.";
+    return;
+  }
+  const url = URL.createObjectURL(annotatedVideoBlob);
+  const link = document.createElement("a");
+  const extension = annotatedVideoBlob.type.includes("mp4") ? "mp4" : "webm";
+  link.href = url;
+  link.download = `badminton_ai_detection_${Date.now()}.${extension}`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+  localBackupStatus.textContent = "AI Detection Video download requested. Check your Downloads folder.";
 });
 document.getElementById("saveMovementBtn").addEventListener("click", () => {
   if (!recordedFrames.length) {
@@ -1114,6 +1140,54 @@ async function uploadBlobInChunks(uploadUrl, blob, label) {
     });
     offset = endExclusive;
     if (responseStatus === 200 || responseStatus === 201) break;
+  }
+}
+
+
+function startAnnotatedRecording() {
+  if (!HTMLCanvasElement.prototype.captureStream || !window.MediaRecorder) {
+    annotatedVideoBlob = null;
+    annotatedRecordingReady = Promise.resolve(null);
+    localBackupStatus.textContent = "This browser does not support AI Detection Video recording. Original video and movement JSON remain available.";
+    return;
+  }
+  annotatedCanvas = document.createElement("canvas");
+  annotatedCanvas.width = video.videoWidth || canvas.width || 1280;
+  annotatedCanvas.height = video.videoHeight || canvas.height || 720;
+  annotatedContext = annotatedCanvas.getContext("2d");
+  const compositeStream = annotatedCanvas.captureStream(30);
+  const mimeType = getRecorderMimeType();
+  try {
+    annotatedRecorder = new MediaRecorder(compositeStream, mimeType ? { mimeType } : undefined);
+    annotatedVideoChunks = [];
+    annotatedRecordingReady = new Promise(resolve => { resolveAnnotatedRecording = resolve; });
+    annotatedRecorder.ondataavailable = event => {
+      if (event.data && event.data.size) annotatedVideoChunks.push(event.data);
+    };
+    annotatedRecorder.onstop = () => {
+      const type = annotatedRecorder.mimeType || "video/webm";
+      annotatedVideoBlob = new Blob(annotatedVideoChunks, {type});
+      compositeStream.getTracks().forEach(track => track.stop());
+      if (resolveAnnotatedRecording) {
+        resolveAnnotatedRecording(annotatedVideoBlob);
+        resolveAnnotatedRecording = null;
+      }
+    };
+    const drawCompositeFrame = () => {
+      if (!annotatedRecorder || annotatedRecorder.state === "inactive") return;
+      if (video.readyState >= 2) {
+        annotatedContext.drawImage(video, 0, 0, annotatedCanvas.width, annotatedCanvas.height);
+        if (canvas.width && canvas.height) annotatedContext.drawImage(canvas, 0, 0, annotatedCanvas.width, annotatedCanvas.height);
+      }
+      annotatedAnimationId = requestAnimationFrame(drawCompositeFrame);
+    };
+    drawCompositeFrame();
+    annotatedRecorder.start(1000);
+  } catch (error) {
+    compositeStream.getTracks().forEach(track => track.stop());
+    annotatedVideoBlob = null;
+    annotatedRecordingReady = Promise.resolve(null);
+    localBackupStatus.textContent = "Could not start AI Detection Video recording: " + error.message + ". Original video and movement JSON remain available.";
   }
 }
 
@@ -1760,6 +1834,9 @@ startRecordBtn.addEventListener("click", () => {
   recordedVideoBlob = null;
   document.getElementById("saveVideoBtn").disabled = true;
   document.getElementById("saveMovementBtn").disabled = true;
+  saveAnnotatedBtn.disabled = true;
+  annotatedVideoBlob = null;
+  annotatedVideoChunks = [];
   localBackupStatus.textContent = "Recording in progress. Save options will be enabled when you stop.";
 
   sessionStart = performance.now();
@@ -1777,7 +1854,9 @@ startRecordBtn.addEventListener("click", () => {
         recordedVideoBlob = new Blob(recordedVideoChunks, { type });
         document.getElementById("saveVideoBtn").disabled = !recordedVideoBlob.size;
         document.getElementById("saveMovementBtn").disabled = recordedFrames.length === 0;
-        localBackupStatus.textContent = "Your recording is ready. Choose either file to download it to your device.";
+        await annotatedRecordingReady;
+        saveAnnotatedBtn.disabled = !annotatedVideoBlob || !annotatedVideoBlob.size;
+        localBackupStatus.textContent = "Your recording is ready. Choose the original video, AI detection video or movement JSON to download.";
         const extension = type.includes("mp4") ? "mp4" : "webm";
         lastUploadFilename = `badminton_match_${Date.now()}.${extension}`;
         cloudResults.style.display = "block";
@@ -1786,6 +1865,7 @@ startRecordBtn.addEventListener("click", () => {
         await uploadVideoForAnalysis(recordedVideoBlob, lastUploadFilename);
       };
       mediaRecorder.start(2000);
+      startAnnotatedRecording();
     } catch (error) {
       isRecording = false;
       recordMessage("Video recording is not available: " + error.message);
@@ -1813,6 +1893,7 @@ stopRecordBtn.addEventListener("click", () => {
   if (!isRecording) return;
 
   isRecording = false;
+  if (annotatedRecorder && annotatedRecorder.state !== "inactive") annotatedRecorder.stop();
   if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
 
   startRecordBtn.disabled = false;
@@ -1881,6 +1962,7 @@ stopCameraBtn.addEventListener("click", () => {
 
   if (isRecording) {
     isRecording = false;
+    if (annotatedRecorder && annotatedRecorder.state !== "inactive") annotatedRecorder.stop();
     if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
     recordMessage("Camera stopped. Active recording was stopped.");
   }
