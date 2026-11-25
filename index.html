@@ -5,7 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#081426">
-<title>Badminton AI Coach V2.2</title>
+<title>Badminton AI Coach V2.3</title>
 
 <style>
 :root {
@@ -246,7 +246,7 @@ footer {
 <header>
   <h1>🏸 Badminton AI Coach</h1>
   <p>Live Player Detection & Skeleton Tracking</p>
-  <p>V2.2 · Direct Cloud Storage Upload · Me Player Selection · TrackNet Analysis</p>
+  <p>V2.3 · Local Backup · Direct Cloud Storage Upload · Me Player Selection · TrackNet Analysis</p>
 </header>
 
 <main>
@@ -370,7 +370,14 @@ footer {
   </p>
   <p class="calibration-help" id="cloudStatus">Connecting to analysis service automatically…</p>
   <div id="cloudResults" class="calibration-help" style="display:none;margin-top:10px;padding:12px;background:#081426;border-radius:9px"></div>
-  <button id="retryUploadBtn" type="button" class="secondary" style="display:none;margin-top:10px">Retry video upload</button>
+  <button id="retryUploadBtn" type="button" class="secondary" style="display:none;margin-top:10px">Retry cloud upload</button>
+  <div id="localBackupActions" style="display:none;margin-top:10px;padding:12px;background:#081426;border:1px solid var(--border);border-radius:9px">
+    <strong>Save a local backup</strong>
+    <p class="calibration-help">Cloud upload did not complete. Save both files to your device before leaving this page.</p>
+    <button id="saveVideoBtn" type="button">Save Video to Device</button>
+    <button id="saveMovementBtn" type="button" class="secondary">Save Movement JSON to Device</button>
+    <p id="localBackupStatus" class="calibration-help" style="margin:8px 0 0">Your recording is still available in this page.</p>
+  </div>
   <div id="meSelectionPanel" style="display:none;margin-top:14px;padding:14px;background:#081426;border:1px solid var(--border);border-radius:10px">
     <h2 style="margin-bottom:6px">Which one is you?</h2>
     <p class="calibration-help">Choose your player label from the last detected frame. This is saved for this match and is separate from the current server.</p>
@@ -437,7 +444,7 @@ footer {
 </main>
 
 <footer>
-  Badminton AI Coach V2.2 · Unified recording workflow
+  Badminton AI Coach V2.3 · Local backup and unified recording workflow
 </footer>
 
 <script type="module">
@@ -470,7 +477,7 @@ const shuttleStatus = document.getElementById("shuttleStatus");
 
 const cameraStatus = document.getElementById("cameraStatus");
 const recordStatus = document.getElementById("recordStatus");
-const APP_VERSION = "2.2";
+const APP_VERSION = "2.3";
 let activeSessionId = localStorage.getItem("badmintonActiveSessionId") || null;
 const CLOUD_API_BASE = "https://badminton-cloud-api-330288568190.asia-southeast1.run.app";
 let lastUploadFilename = "";
@@ -1004,6 +1011,40 @@ retryUploadBtn.addEventListener("click", () => {
   }
 });
 
+const localBackupActions = document.getElementById("localBackupActions");
+const localBackupStatus = document.getElementById("localBackupStatus");
+document.getElementById("saveVideoBtn").addEventListener("click", () => {
+  if (!recordedVideoBlob || !recordedVideoBlob.size) {
+    localBackupStatus.textContent = "No captured video is available to save.";
+    return;
+  }
+  const url = URL.createObjectURL(recordedVideoBlob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = lastUploadFilename || `badminton_match_${Date.now()}.webm`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+  localBackupStatus.textContent = "Video download requested. Check your device's Downloads folder.";
+});
+document.getElementById("saveMovementBtn").addEventListener("click", () => {
+  if (!recordedFrames.length) {
+    localBackupStatus.textContent = "No movement frames are available to export.";
+    return;
+  }
+  const movementBlob = new Blob([JSON.stringify(buildMovementOutput(), null, 2)], {type:"application/json"});
+  const url = URL.createObjectURL(movementBlob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `badminton_movement_${Date.now()}_v2_3.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+  localBackupStatus.textContent = "Movement JSON download requested. Check your device's Downloads folder.";
+});
+
 async function createCloudSession() {
   const response = await fetch(CLOUD_API_BASE + "/api/v1/sessions", { method:"POST", headers:cloudHeaders() });
   if (!response.ok) throw new Error("Could not create a cloud match session.");
@@ -1188,13 +1229,17 @@ async function uploadVideoForAnalysis(blob, filename) {
     const result = await completeResponse.json().catch(() => ({}));
     if (!completeResponse.ok) throw new Error(result.detail || `Upload completion failed (HTTP ${completeResponse.status}).`);
     cloudStatus.textContent = `Upload complete. Job ${result.job_id} is ${result.status || "queued"}.`;
+    localBackupActions.style.display = "none";
+    retryUploadBtn.style.display = "none";
     cloudResults.textContent = `Upload successful · ${formatBytes(blob.size)} video · Job ${result.job_id}. Cloud analysis is starting.`;
     recordMessage("Video and movement data uploaded directly to Cloud Storage. Cloud AI analysis has started.");
     pollAnalysisJob(base, result.job_id);
   } catch (error) {
     cloudStatus.textContent = "Upload failed: " + error.message;
-    cloudResults.textContent = `Your recording remains in this browser session (${formatBytes(blob.size)}). The cloud upload or job start was not confirmed. You can retry while this page remains open.`;
+    cloudResults.textContent = `Your recording remains in this browser session (${formatBytes(blob.size)}). The cloud upload or job start was not confirmed. You can save a local backup or retry while this page remains open.`;
     retryUploadBtn.style.display = "inline-block";
+    localBackupActions.style.display = "block";
+    localBackupStatus.textContent = "Save both the video and movement JSON to your device before closing or refreshing this page.";
     recordMessage("Video was captured, but cloud upload failed: " + error.message + " You can retry without recording again while this page remains open.");
   } finally {
     uploadInProgress = false;
