@@ -1148,7 +1148,7 @@ function startAnnotatedRecording() {
   if (!HTMLCanvasElement.prototype.captureStream || !window.MediaRecorder) {
     annotatedVideoBlob = null;
     annotatedRecordingReady = Promise.resolve(null);
-    localBackupStatus.textContent = "This browser does not support AI Detection Video recording. Original video and movement JSON remain available.";
+    localBackupStatus.textContent = "AI Detection Video is not supported by this browser. Original video and movement JSON remain available.";
     return;
   }
   annotatedCanvas = document.createElement("canvas");
@@ -1156,20 +1156,36 @@ function startAnnotatedRecording() {
   annotatedCanvas.height = video.videoHeight || canvas.height || 720;
   annotatedContext = annotatedCanvas.getContext("2d");
   const compositeStream = annotatedCanvas.captureStream(30);
+  const compositeTrack = compositeStream.getVideoTracks()[0];
   const mimeType = getRecorderMimeType();
   try {
     annotatedRecorder = new MediaRecorder(compositeStream, mimeType ? { mimeType } : undefined);
     annotatedVideoChunks = [];
+    annotatedVideoBlob = null;
     annotatedRecordingReady = new Promise(resolve => { resolveAnnotatedRecording = resolve; });
     annotatedRecorder.ondataavailable = event => {
       if (event.data && event.data.size) annotatedVideoChunks.push(event.data);
+    };
+    annotatedRecorder.onerror = event => {
+      localBackupStatus.textContent = "AI Detection Video recording error: " + (event.error?.message || "browser recorder error") + ". Original video and movement JSON are still available.";
+      if (resolveAnnotatedRecording) {
+        resolveAnnotatedRecording(null);
+        resolveAnnotatedRecording = null;
+      }
     };
     annotatedRecorder.onstop = () => {
       const type = annotatedRecorder.mimeType || "video/webm";
       annotatedVideoBlob = new Blob(annotatedVideoChunks, {type});
       compositeStream.getTracks().forEach(track => track.stop());
+      if (annotatedAnimationId) cancelAnimationFrame(annotatedAnimationId);
+      saveAnnotatedBtn.disabled = !annotatedVideoBlob.size;
+      if (annotatedVideoBlob.size) {
+        localBackupStatus.textContent = "AI Detection Video is ready (" + formatBytes(annotatedVideoBlob.size) + "). Tap Save AI Detection Video to Device.";
+      } else {
+        localBackupStatus.textContent = "The browser did not produce an AI Detection Video. Original video and movement JSON are still available.";
+      }
       if (resolveAnnotatedRecording) {
-        resolveAnnotatedRecording(annotatedVideoBlob);
+        resolveAnnotatedRecording(annotatedVideoBlob.size ? annotatedVideoBlob : null);
         resolveAnnotatedRecording = null;
       }
     };
@@ -1178,15 +1194,22 @@ function startAnnotatedRecording() {
       if (video.readyState >= 2) {
         annotatedContext.drawImage(video, 0, 0, annotatedCanvas.width, annotatedCanvas.height);
         if (canvas.width && canvas.height) annotatedContext.drawImage(canvas, 0, 0, annotatedCanvas.width, annotatedCanvas.height);
+        if (compositeTrack && typeof compositeTrack.requestFrame === "function") compositeTrack.requestFrame();
       }
       annotatedAnimationId = requestAnimationFrame(drawCompositeFrame);
     };
-    drawCompositeFrame();
+    // Paint an initial frame before starting MediaRecorder, then keep refreshing it.
+    if (video.readyState >= 2) {
+      annotatedContext.drawImage(video, 0, 0, annotatedCanvas.width, annotatedCanvas.height);
+      if (canvas.width && canvas.height) annotatedContext.drawImage(canvas, 0, 0, annotatedCanvas.width, annotatedCanvas.height);
+    }
     annotatedRecorder.start(1000);
+    drawCompositeFrame();
   } catch (error) {
     compositeStream.getTracks().forEach(track => track.stop());
     annotatedVideoBlob = null;
     annotatedRecordingReady = Promise.resolve(null);
+    saveAnnotatedBtn.disabled = true;
     localBackupStatus.textContent = "Could not start AI Detection Video recording: " + error.message + ". Original video and movement JSON remain available.";
   }
 }
@@ -1856,7 +1879,9 @@ startRecordBtn.addEventListener("click", () => {
         document.getElementById("saveMovementBtn").disabled = recordedFrames.length === 0;
         await annotatedRecordingReady;
         saveAnnotatedBtn.disabled = !annotatedVideoBlob || !annotatedVideoBlob.size;
-        localBackupStatus.textContent = "Your recording is ready. Choose the original video, AI detection video or movement JSON to download.";
+        if (annotatedVideoBlob && annotatedVideoBlob.size) {
+          localBackupStatus.textContent = "Your recording is ready. Choose the original video, AI detection video or movement JSON to download.";
+        }
         const extension = type.includes("mp4") ? "mp4" : "webm";
         lastUploadFilename = `badminton_match_${Date.now()}.${extension}`;
         cloudResults.style.display = "block";
