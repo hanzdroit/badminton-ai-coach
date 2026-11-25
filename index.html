@@ -223,6 +223,14 @@ label {
 }
 .shuttle-toggle input { width:18px; height:18px; accent-color:var(--green); }
 .shuttle-legend { font-size:12px; color:var(--muted); line-height:1.8; }
+.me-selection-preview {
+  display:block; width:100%; max-height:360px; object-fit:contain;
+  background:#080d15; border:1px solid var(--border); border-radius:10px; margin:12px 0;
+}
+.me-player-options { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin-top:12px; }
+.me-player-options button { margin:0; }
+.me-player-options button.selected { outline:3px solid var(--yellow); background:#ffdc55; color:#14291e; }
+@media (max-width:520px) { .me-player-options { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 footer {
   text-align:center;
   padding:20px;
@@ -362,6 +370,14 @@ footer {
   <p class="calibration-help" id="cloudStatus">Connecting to analysis service automatically…</p>
   <div id="cloudResults" class="calibration-help" style="display:none;margin-top:10px;padding:12px;background:#101827;border-radius:9px"></div>
   <button id="retryUploadBtn" type="button" class="secondary" style="display:none;margin-top:10px">Retry video upload</button>
+  <div id="meSelectionPanel" style="display:none;margin-top:14px;padding:14px;background:#101827;border:1px solid var(--border);border-radius:10px">
+    <h2 style="margin-bottom:6px">Which one is you?</h2>
+    <p class="calibration-help">Choose your player label from the last detected frame. This is saved for this match and is separate from the current server.</p>
+    <canvas id="mePreviewCanvas" class="me-selection-preview"></canvas>
+    <div id="mePlayerOptions" class="me-player-options"></div>
+    <button id="skipMeSelectionBtn" type="button" class="secondary">Skip for now</button>
+    <p id="meSelectionStatus" class="calibration-help" style="margin:10px 0 0">Select the label shown above your head.</p>
+  </div>
 <p class="calibration-help">Use this phone camera for both test footage (point it at a laptop screen playing a badminton video) and real-court recording.</p>
 
   <label for="serverSelect">Current Server (manual selection)</label>
@@ -458,6 +474,8 @@ let activeSessionId = localStorage.getItem("badmintonActiveSessionId") || null;
 const CLOUD_API_BASE = "https://badminton-cloud-api-330288568190.asia-southeast1.run.app";
 let lastUploadFilename = "";
 let uploadInProgress = false;
+let mePlayerId = null;
+let meSelectionResolver = null;
 const cloudStatus = document.getElementById("cloudStatus");
 const cloudResults = document.getElementById("cloudResults");
 
@@ -1057,6 +1075,66 @@ async function uploadBlobInChunks(uploadUrl, blob, label) {
   }
 }
 
+function promptMePlayerSelection() {
+  const panel = document.getElementById("meSelectionPanel");
+  const preview = document.getElementById("mePreviewCanvas");
+  const options = document.getElementById("mePlayerOptions");
+  const message = document.getElementById("meSelectionStatus");
+  const skipButton = document.getElementById("skipMeSelectionBtn");
+  const maximum = Number(document.getElementById("maxPlayers").value) || 4;
+
+  mePlayerId = null;
+  options.innerHTML = "";
+  message.textContent = "Select the label shown above your head.";
+  panel.style.display = "block";
+
+  // Freeze the most recent camera frame together with its P1–P4 overlay.
+  const width = video.videoWidth || canvas.width || 640;
+  const height = video.videoHeight || canvas.height || 360;
+  preview.width = width;
+  preview.height = height;
+  const previewContext = preview.getContext("2d");
+  previewContext.clearRect(0, 0, width, height);
+  try {
+    if (video.readyState >= 2) previewContext.drawImage(video, 0, 0, width, height);
+    if (canvas.width && canvas.height) previewContext.drawImage(canvas, 0, 0, width, height);
+  } catch (error) {
+    message.textContent = "Could not capture the preview frame. You can still choose P1–P4 below.";
+  }
+
+  for (let id = 1; id <= maximum; id++) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = "P" + id;
+    button.addEventListener("click", () => {
+      mePlayerId = "P" + id;
+      message.textContent = mePlayerId + " selected as Me for this match.";
+      options.querySelectorAll("button").forEach(item => item.classList.toggle("selected", item === button));
+      if (meSelectionResolver) {
+        const finish = meSelectionResolver;
+        meSelectionResolver = null;
+        panel.style.display = "none";
+        finish(mePlayerId);
+      }
+    });
+    options.appendChild(button);
+  }
+
+  return new Promise(resolve => {
+    meSelectionResolver = resolve;
+    skipButton.onclick = () => {
+      mePlayerId = null;
+      if (meSelectionResolver) {
+        const finish = meSelectionResolver;
+        meSelectionResolver = null;
+        panel.style.display = "none";
+        finish(null);
+      }
+    };
+    panel.scrollIntoView({ behavior:"smooth", block:"center" });
+  });
+}
+
 async function uploadVideoForAnalysis(blob, filename) {
   if (!blob || !blob.size) {
     cloudStatus.textContent = "Video capture failed: the browser produced an empty recording.";
@@ -1088,6 +1166,7 @@ async function uploadVideoForAnalysis(blob, filename) {
     initForm.append("match_type", document.getElementById("matchType").value);
     initForm.append("max_players", document.getElementById("maxPlayers").value);
     initForm.append("source", "camera");
+    if (mePlayerId) initForm.append("me_player_id", mePlayerId);
     initForm.append("origin", window.location.origin);
 
     const initResponse = await fetch(base + "/api/v1/uploads", { method:"POST", headers:cloudHeaders(), body:initForm });
@@ -1164,7 +1243,7 @@ async function pollAnalysisJob(base, jobId) {
 function buildMovementOutput() {
   return {
     app: "Badminton AI Coach", version: APP_VERSION, matchType: document.getElementById("matchType").value,
-    maxPlayers: Number(document.getElementById("maxPlayers").value), recordingDate: new Date().toISOString(),
+    maxPlayers: Number(document.getElementById("maxPlayers").value), mePlayerId, recordingDate: new Date().toISOString(),
     durationSeconds: recordedFrames.length ? recordedFrames[recordedFrames.length-1].t : 0,
     frameCount: recordedFrames.length,
     dataType: "player_movement_pose_court_coordinates_and_experimental_shuttle_candidates",
@@ -1652,7 +1731,8 @@ startRecordBtn.addEventListener("click", () => {
         const extension = type.includes("mp4") ? "mp4" : "webm";
         lastUploadFilename = `badminton_match_${Date.now()}.${extension}`;
         cloudResults.style.display = "block";
-        cloudResults.textContent = `Video captured: ${formatBytes(recordedVideoBlob.size)} · ${recordedFrames.length} movement frames. Preparing upload…`;
+        cloudResults.textContent = `Video captured: ${formatBytes(recordedVideoBlob.size)} · ${recordedFrames.length} movement frames. Choose your player before upload.`;
+        await promptMePlayerSelection();
         await uploadVideoForAnalysis(recordedVideoBlob, lastUploadFilename);
       };
       mediaRecorder.start(2000);
