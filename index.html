@@ -371,12 +371,12 @@ footer {
   <p class="calibration-help" id="cloudStatus">Connecting to analysis service automatically…</p>
   <div id="cloudResults" class="calibration-help" style="display:none;margin-top:10px;padding:12px;background:#081426;border-radius:9px"></div>
   <button id="retryUploadBtn" type="button" class="secondary" style="display:none;margin-top:10px">Retry cloud upload</button>
-  <div id="localBackupActions" style="display:none;margin-top:10px;padding:12px;background:#081426;border:1px solid var(--border);border-radius:9px">
+  <div id="localBackupActions" style="display:block;margin-top:10px;padding:12px;background:#081426;border:1px solid var(--border);border-radius:9px">
     <strong>Save a local backup</strong>
-    <p class="calibration-help">Cloud upload did not complete. Save both files to your device before leaving this page.</p>
-    <button id="saveVideoBtn" type="button">Save Video to Device</button>
-    <button id="saveMovementBtn" type="button" class="secondary">Save Movement JSON to Device</button>
-    <p id="localBackupStatus" class="calibration-help" style="margin:8px 0 0">Your recording is still available in this page.</p>
+    <p class="calibration-help">You can save a local copy of your recording and movement data at any time after recording.</p>
+    <button id="saveVideoBtn" type="button" disabled>Save Video to Device</button>
+    <button id="saveMovementBtn" type="button" class="secondary" disabled>Save Movement JSON to Device</button>
+    <p id="localBackupStatus" class="calibration-help" style="margin:8px 0 0">Save options will become available after you finish a recording.</p>
   </div>
   <div id="meSelectionPanel" style="display:none;margin-top:14px;padding:14px;background:#081426;border:1px solid var(--border);border-radius:10px">
     <h2 style="margin-bottom:6px">Which one is you?</h2>
@@ -1037,7 +1037,7 @@ document.getElementById("saveMovementBtn").addEventListener("click", () => {
   const url = URL.createObjectURL(movementBlob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `badminton_movement_${Date.now()}_v2_3.json`;
+  link.download = `badminton_movement_${Date.now()}_v${APP_VERSION.replace(".", "_")}.json`;
   document.body.appendChild(link);
   link.click();
   link.remove();
@@ -1229,7 +1229,6 @@ async function uploadVideoForAnalysis(blob, filename) {
     const result = await completeResponse.json().catch(() => ({}));
     if (!completeResponse.ok) throw new Error(result.detail || `Upload completion failed (HTTP ${completeResponse.status}).`);
     cloudStatus.textContent = `Upload complete. Job ${result.job_id} is ${result.status || "queued"}.`;
-    localBackupActions.style.display = "none";
     retryUploadBtn.style.display = "none";
     cloudResults.textContent = `Upload successful · ${formatBytes(blob.size)} video · Job ${result.job_id}. Cloud analysis is starting.`;
     recordMessage("Video and movement data uploaded directly to Cloud Storage. Cloud AI analysis has started.");
@@ -1238,7 +1237,6 @@ async function uploadVideoForAnalysis(blob, filename) {
     cloudStatus.textContent = "Upload failed: " + error.message;
     cloudResults.textContent = `Your recording remains in this browser session (${formatBytes(blob.size)}). The cloud upload or job start was not confirmed. You can save a local backup or retry while this page remains open.`;
     retryUploadBtn.style.display = "inline-block";
-    localBackupActions.style.display = "block";
     localBackupStatus.textContent = "Save both the video and movement JSON to your device before closing or refreshing this page.";
     recordMessage("Video was captured, but cloud upload failed: " + error.message + " You can retry without recording again while this page remains open.");
   } finally {
@@ -1760,6 +1758,9 @@ startRecordBtn.addEventListener("click", () => {
   recordedFrames = [];
   recordedVideoChunks = [];
   recordedVideoBlob = null;
+  document.getElementById("saveVideoBtn").disabled = true;
+  document.getElementById("saveMovementBtn").disabled = true;
+  localBackupStatus.textContent = "Recording in progress. Save options will be enabled when you stop.";
 
   sessionStart = performance.now();
   lastSavedFrame = 0;
@@ -1774,6 +1775,9 @@ startRecordBtn.addEventListener("click", () => {
       mediaRecorder.onstop = async () => {
         const type = mediaRecorder.mimeType || "video/webm";
         recordedVideoBlob = new Blob(recordedVideoChunks, { type });
+        document.getElementById("saveVideoBtn").disabled = !recordedVideoBlob.size;
+        document.getElementById("saveMovementBtn").disabled = recordedFrames.length === 0;
+        localBackupStatus.textContent = "Your recording is ready. Choose either file to download it to your device.";
         const extension = type.includes("mp4") ? "mp4" : "webm";
         lastUploadFilename = `badminton_match_${Date.now()}.${extension}`;
         cloudResults.style.display = "block";
