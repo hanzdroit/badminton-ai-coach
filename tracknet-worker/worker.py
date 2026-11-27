@@ -71,7 +71,9 @@ def main() -> int:
     input_uri = os.environ["INPUT_URI"]
     output_uri = os.environ["OUTPUT_URI"].rstrip("/")
     tracknet_uri = os.environ["TRACKNET_CHECKPOINT_URI"]
-    inpaint_uri = os.environ["INPAINTNET_CHECKPOINT_URI"]
+    inpaint_uri = os.getenv("INPAINTNET_CHECKPOINT_URI", "")
+    convert_only = os.getenv("CONVERT_ONLY", "false").lower() == "true"
+    share_output_uri = os.getenv("SHARE_OUTPUT_URI", "")
     client = storage.Client()
 
     WORK_DIR.mkdir(parents=True, exist_ok=True)
@@ -90,11 +92,14 @@ def main() -> int:
     success = False
 
     try:
-        print("Worker V2.9a: downloading source video and model checkpoints", flush=True)
+        print("Worker V2.9b: downloading source video and model checkpoints", flush=True)
         log_memory("before_download")
         download_gcs(client, input_uri, local_video)
-        download_gcs(client, tracknet_uri, local_tracknet)
-        download_gcs(client, inpaint_uri, local_inpaint)
+        if not convert_only:
+            if not tracknet_uri or not inpaint_uri:
+                raise RuntimeError("TrackNet checkpoint URIs are required unless CONVERT_ONLY=true.")
+            download_gcs(client, tracknet_uri, local_tracknet)
+            download_gcs(client, inpaint_uri, local_inpaint)
         log_memory("after_download")
 
         # Transcode to a decoder-friendly MP4 container (video only).
@@ -115,10 +120,14 @@ def main() -> int:
 
         # Keep a phone/WhatsApp-friendly H.264 + AAC MP4 before inference starts.
         # This survives a later TrackNet failure and is separate from the raw upload.
-        share_uri = f"gs://{input_bucket_name}/shares/{Path(input_object_name).stem}.mp4"
+        share_uri = share_output_uri or f"gs://{input_bucket_name}/shares/{Path(input_object_name).stem}.mp4"
         upload_file(client, analysis_video, share_uri)
-        print(json.dumps({"worker_version":"2.9a","stage":"share_mp4_ready","share_uri":share_uri,
-                          "size_bytes":analysis_video.stat().st_size}), flush=True)
+        print(json.dumps({"worker_version":"2.9b","stage":"share_mp4_ready","share_uri":share_uri,
+                          "size_bytes":analysis_video.stat().st_size,"convert_only":convert_only}), flush=True)
+
+        if convert_only:
+            success = True
+            return 0
 
         probe = cv2.VideoCapture(str(analysis_video))
         readable, first_frame = probe.read()
@@ -200,7 +209,7 @@ def main() -> int:
         upload_file(client, json_path, json_uri)
         success = True
         log_memory("after_result_upload")
-        print(json.dumps({"worker_version": "2.9a", "status": "completed", "point_count": len(points), "csv_uri": csv_uri, "result_uri": json_uri}), flush=True)
+        print(json.dumps({"worker_version": "2.9b", "status": "completed", "point_count": len(points), "csv_uri": csv_uri, "result_uri": json_uri}), flush=True)
         return 0
     finally:
         # Delete the source object only after successful inference AND result upload.
