@@ -1155,10 +1155,18 @@ async function uploadExistingVideoForAnalysis(file) {
   }
   if (!file.size) { status.textContent = "Selected video is empty."; return; }
   button.disabled = true;
+  let uploadStage = "Starting upload";
   try {
-    if (!activeSessionId) await createCloudSession();
+    if (!activeSessionId) {
+      uploadStage = "Creating cloud session";
+      status.textContent = "Creating cloud session…";
+      await createCloudSession();
+    }
+    uploadStage = "Checking Cloud API health";
+    status.textContent = "Checking cloud service…";
     const health = await getCloudHealth();
     if (file.size > Number(health.upload_limit_mb || 500) * 1024 * 1024) throw new Error("Video exceeds the cloud upload limit.");
+    uploadStage = "Requesting secure upload URL";
     const init = new FormData();
     init.append("session_id", activeSessionId);
     init.append("filename", file.name);
@@ -1172,10 +1180,14 @@ async function uploadExistingVideoForAnalysis(file) {
     const response = await fetch(CLOUD_API_BASE + "/api/v1/uploads", {method:"POST",headers:cloudHeaders(),body:init});
     const data = await response.json().catch(()=>({}));
     if (!response.ok) throw new Error(data.detail || "Could not initialise upload.");
-    status.textContent = "Uploading video…";
+    uploadStage = "Uploading video to Google Cloud Storage";
+    status.textContent = "Uploading video to Google Cloud Storage…";
     await uploadBlobInChunks(data.upload_url, file, "Uploading existing video", status);
+    uploadStage = "Uploading analysis metadata to Google Cloud Storage";
     const movement = new Blob([JSON.stringify({app:"Badminton AI Coach",version:APP_VERSION,dataType:"video_only_analysis",frameCount:0,frames:[],source:"uploaded_video"})],{type:"application/json"});
     await uploadBlobInChunks(data.movement_upload_url, movement, "Uploading analysis metadata", status);
+    uploadStage = "Confirming upload and starting TrackNet job";
+    status.textContent = "Confirming upload and starting analysis…";
     const complete = await fetch(CLOUD_API_BASE + "/api/v1/uploads/" + encodeURIComponent(data.job_id) + "/complete",{method:"POST",headers:cloudHeaders()});
     const result = await complete.json().catch(()=>({}));
     if (!complete.ok) throw new Error(result.detail || "Could not start analysis.");
@@ -1185,7 +1197,8 @@ async function uploadExistingVideoForAnalysis(file) {
     pollAnalysisJob(CLOUD_API_BASE,data.job_id);
     await refreshMatchHistory();
   } catch(error) {
-    status.textContent = "Upload/analysis failed: " + (error.message || String(error));
+    const detail = error.message || String(error);
+    status.textContent = `Upload failed during: ${uploadStage}. ${detail}`;
   } finally { button.disabled = false; }
 }
 
