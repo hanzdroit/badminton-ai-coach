@@ -5,7 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#081426">
-<title>Badminton AI Coach V2.7</title>
+<title>Badminton AI Coach V2.8</title>
 
 <style>
 :root {
@@ -246,7 +246,7 @@ footer {
 <header>
   <h1>🏸 Badminton AI Coach</h1>
   <p>Live Player Detection & Skeleton Tracking</p>
-  <p>V2.7 · Cloud upload test mode · Upload diagnostics · AI Detection Video Export · Local Backup · Direct Cloud Storage Upload · Me Player Selection · TrackNet Analysis</p>
+  <p>V2.8 · Upload existing video · Live record · Download or analyse · Match history</p>
 </header>
 
 <main>
@@ -275,16 +275,16 @@ footer {
   <div id="matchHistoryList" class="calibration-help"></div>
 </section>
 
-<section class="panel" id="cloudUploadTestPanel">
-  <h2>Test Cloud Upload (No AI Analysis)</h2>
-  <p class="calibration-help">Choose any short MP4, WebM, MOV or M4V video from your phone. This test checks the browser-to-Google-Cloud-Storage upload only. It does not create a match, movement data or TrackNet job. The temporary test file is deleted automatically after verification.</p>
-  <input id="testVideoFile" type="file" accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov,.m4v">
-  <button id="testCloudUploadBtn" type="button">Test Video Upload</button>
-  <p id="testCloudUploadStatus" class="calibration-help" style="margin:10px 0 0">Select a short video to begin.</p>
+<section class="panel" id="existingVideoPanel">
+  <h2>1. Upload Existing Video</h2>
+  <p class="calibration-help">Choose a badminton video already saved on your phone. It will be uploaded to Cloud Storage and sent to TrackNet for shuttle analysis. Player movement overlays are not available for a video that was not recorded inside this app.</p>
+  <input id="existingVideoFile" type="file" accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov,.m4v">
+  <button id="analyseExistingVideoBtn" type="button">Upload & Analyse Video</button>
+  <p id="existingVideoStatus" class="calibration-help">Select a video to start analysis.</p>
 </section>
 
 <section class="panel">
-  <h2>Live Camera & AI Detection</h2>
+  <h2>2. Live Record</h2>
 
   <div class="camera-wrap">
     <div class="placeholder" id="placeholder">
@@ -382,7 +382,8 @@ footer {
   <div id="localBackupActions" style="display:block;margin-top:10px;padding:12px;background:#081426;border:1px solid var(--border);border-radius:9px">
     <strong>Save a local backup</strong>
     <p class="calibration-help">You can save a local copy of your recording and movement data at any time after recording.</p>
-    <button id="saveVideoBtn" type="button" disabled>Save Video to Device</button>
+    <button id="saveVideoBtn" type="button" disabled>Download Original Video</button>
+    <button id="shareVideoBtn" type="button" class="secondary" disabled>Share Video (WhatsApp / Other Apps)</button>
     <button id="saveMovementBtn" type="button" class="secondary" disabled>Save Movement JSON to Device</button>
     <button id="saveAnnotatedBtn" type="button" class="secondary" disabled>Save AI Detection Video to Device</button>
     <p id="localBackupStatus" class="calibration-help" style="margin:8px 0 0">Save options will become available after you finish a recording.</p>
@@ -411,8 +412,9 @@ footer {
   </button>
 
   <button id="stopRecordBtn" class="danger" disabled>
-    Stop & Upload Recording
+    Stop Recording
   </button>
+  <button id="uploadRecordedBtn" type="button" disabled>Upload & Analyse Recording</button>
 
   <button id="exportBtn" class="secondary" disabled>
     Export Movement JSON
@@ -453,7 +455,7 @@ footer {
 </main>
 
 <footer>
-  Badminton AI Coach V2.7 · Cloud upload test · AI detection video and local backup workflow
+  Badminton AI Coach V2.8 · Upload and live recording workflow
 </footer>
 
 <script type="module">
@@ -486,7 +488,7 @@ const shuttleStatus = document.getElementById("shuttleStatus");
 
 const cameraStatus = document.getElementById("cameraStatus");
 const recordStatus = document.getElementById("recordStatus");
-const APP_VERSION = "2.7";
+const APP_VERSION = "2.8";
 let activeSessionId = localStorage.getItem("badmintonActiveSessionId") || null;
 const CLOUD_API_BASE = "https://badminton-cloud-api-330288568190.asia-southeast1.run.app";
 let lastUploadFilename = "";
@@ -1124,52 +1126,78 @@ document.getElementById("newSessionBtn")?.addEventListener("click", async () => 
   catch (error) { document.getElementById("sessionStatus").textContent = error.message; }
 });
 
-async function runCloudUploadTest() {
-  const fileInput = document.getElementById("testVideoFile");
-  const button = document.getElementById("testCloudUploadBtn");
-  const status = document.getElementById("testCloudUploadStatus");
-  const file = fileInput.files && fileInput.files[0];
-  if (!file) {
-    status.textContent = "Please select a video file first.";
+async function uploadExistingVideoForAnalysis(file) {
+  const status = document.getElementById("existingVideoStatus");
+  const button = document.getElementById("analyseExistingVideoBtn");
+  if (!file || !/\\.(mp4|webm|mov|m4v)$/i.test(file.name)) {
+    status.textContent = "Choose an MP4, WebM, MOV or M4V video.";
     return;
   }
-  if (!/\.(mp4|webm|mov|m4v)$/i.test(file.name)) {
-    status.textContent = "Unsupported file. Choose MP4, WebM, MOV or M4V.";
-    return;
-  }
+  if (!file.size) { status.textContent = "Selected video is empty."; return; }
   button.disabled = true;
-  let stage = "Requesting a temporary upload URL";
-  status.textContent = "Preparing test upload…";
   try {
-    const initForm = new FormData();
-    initForm.append("filename", file.name);
-    initForm.append("size_bytes", String(file.size));
-    initForm.append("content_type", file.type || "application/octet-stream");
-    initForm.append("origin", window.location.origin);
-    const initResponse = await fetch(CLOUD_API_BASE + "/api/v1/test-uploads", {
-      method: "POST", headers: cloudHeaders(), body: initForm
-    });
-    const initData = await initResponse.json().catch(() => ({}));
-    if (!initResponse.ok) throw new Error(initData.detail || `Could not create test upload (HTTP ${initResponse.status}).`);
-    if (!initData.upload_url || !initData.test_id) throw new Error("Cloud API did not return a test upload URL.");
-    stage = "Uploading test video to Google Cloud Storage";
-    await uploadBlobInChunks(initData.upload_url, file, "Uploading test video to Cloud Storage", status);
-    stage = "Verifying upload and deleting temporary test file";
-    const completeForm = new FormData();
-    completeForm.append("filename", file.name);
-    completeForm.append("size_bytes", String(file.size));
-    const completeResponse = await fetch(CLOUD_API_BASE + `/api/v1/test-uploads/${encodeURIComponent(initData.test_id)}/complete`, {
-      method: "POST", headers: cloudHeaders(), body: completeForm
-    });
-    const result = await completeResponse.json().catch(() => ({}));
-    if (!completeResponse.ok) throw new Error(result.detail || `Verification failed (HTTP ${completeResponse.status}).`);
-    status.textContent = `SUCCESS: ${file.name} (${formatBytes(result.video_size_bytes)}) uploaded and verified. Temporary file deleted. No match or AI analysis was created.`;
-  } catch (error) {
-    status.textContent = `FAILED during: ${stage}. ${error.message || String(error)}`;
-  } finally {
-    button.disabled = false;
+    if (!activeSessionId) await createCloudSession();
+    const health = await getCloudHealth();
+    if (file.size > Number(health.upload_limit_mb || 500) * 1024 * 1024) throw new Error("Video exceeds the cloud upload limit.");
+    const init = new FormData();
+    init.append("session_id", activeSessionId);
+    init.append("filename", file.name);
+    init.append("size_bytes", String(file.size));
+    init.append("content_type", file.type || "application/octet-stream");
+    init.append("match_type", document.getElementById("matchType").value);
+    init.append("max_players", document.getElementById("maxPlayers").value);
+    init.append("source", "upload");
+    init.append("origin", window.location.origin);
+    status.textContent = "Requesting secure upload…";
+    const response = await fetch(CLOUD_API_BASE + "/api/v1/uploads", {method:"POST",headers:cloudHeaders(),body:init});
+    const data = await response.json().catch(()=>({}));
+    if (!response.ok) throw new Error(data.detail || "Could not initialise upload.");
+    status.textContent = "Uploading video…";
+    await uploadBlobInChunks(data.upload_url, file, "Uploading existing video", status);
+    const movement = new Blob([JSON.stringify({app:"Badminton AI Coach",version:APP_VERSION,dataType:"video_only_analysis",frameCount:0,frames:[],source:"uploaded_video"})],{type:"application/json"});
+    await uploadBlobInChunks(data.movement_upload_url, movement, "Uploading analysis metadata", status);
+    const complete = await fetch(CLOUD_API_BASE + "/api/v1/uploads/" + encodeURIComponent(data.job_id) + "/complete",{method:"POST",headers:cloudHeaders()});
+    const result = await complete.json().catch(()=>({}));
+    if (!complete.ok) throw new Error(result.detail || "Could not start analysis.");
+    status.textContent = "Upload verified. TrackNet analysis started.";
+    cloudResults.style.display="block";
+    cloudResults.textContent = "Existing video uploaded · " + formatBytes(file.size) + " · Job " + result.job_id + ". Shuttle analysis is running; no player movement was recorded by this app.";
+    pollAnalysisJob(CLOUD_API_BASE,data.job_id);
+    await refreshMatchHistory();
+  } catch(error) {
+    status.textContent = "Upload/analysis failed: " + (error.message || String(error));
+  } finally { button.disabled = false; }
+}
+
+document.getElementById("analyseExistingVideoBtn").addEventListener("click",()=>{
+  const file=document.getElementById("existingVideoFile").files?.[0];
+  uploadExistingVideoForAnalysis(file);
+});
+
+async function shareRecordedVideo() {
+  const status=document.getElementById("localBackupStatus");
+  if (!recordedVideoBlob || !recordedVideoBlob.size) { status.textContent="No recorded video is available to share."; return; }
+  const ext=recordedVideoBlob.type.includes("mp4") ? "mp4" : "webm";
+  const file=new File([recordedVideoBlob],`badminton_match_${Date.now()}.${ext}`,{type:recordedVideoBlob.type || "application/octet-stream"});
+  try {
+    if (navigator.canShare && navigator.canShare({files:[file]})) {
+      await navigator.share({files:[file],title:"Badminton match recording"});
+      status.textContent="Share sheet opened. Choose WhatsApp or another app.";
+    } else {
+      status.textContent="This browser cannot share this video file directly. Download it and share from your phone's Gallery or Files app.";
+    }
+  } catch(error) {
+    if (error.name!=="AbortError") status.textContent="Sharing unavailable: "+error.message+". Try downloading and sharing from Gallery.";
   }
 }
+document.getElementById("shareVideoBtn").addEventListener("click",shareRecordedVideo);
+
+document.getElementById("uploadRecordedBtn").addEventListener("click",async()=>{
+  if (!recordedVideoBlob || !recordedVideoBlob.size) return;
+  await promptMePlayerSelection();
+  await uploadVideoForAnalysis(recordedVideoBlob,lastUploadFilename);
+});
+
 
 async function uploadBlobInChunks(uploadUrl, blob, label, progressTarget = cloudStatus) {
   const chunkSize = 8 * 1024 * 1024;
@@ -1932,6 +1960,8 @@ startRecordBtn.addEventListener("click", () => {
   recordedVideoChunks = [];
   recordedVideoBlob = null;
   document.getElementById("saveVideoBtn").disabled = true;
+  document.getElementById("shareVideoBtn").disabled = true;
+  document.getElementById("uploadRecordedBtn").disabled = true;
   document.getElementById("saveMovementBtn").disabled = true;
   saveAnnotatedBtn.disabled = true;
   annotatedVideoBlob = null;
@@ -1952,6 +1982,8 @@ startRecordBtn.addEventListener("click", () => {
         const type = mediaRecorder.mimeType || "video/webm";
         recordedVideoBlob = new Blob(recordedVideoChunks, { type });
         document.getElementById("saveVideoBtn").disabled = !recordedVideoBlob.size;
+        document.getElementById("shareVideoBtn").disabled = !recordedVideoBlob.size;
+        document.getElementById("uploadRecordedBtn").disabled = !recordedVideoBlob.size;
         document.getElementById("saveMovementBtn").disabled = recordedFrames.length === 0;
         await annotatedRecordingReady;
         saveAnnotatedBtn.disabled = !annotatedVideoBlob || !annotatedVideoBlob.size;
@@ -1962,8 +1994,8 @@ startRecordBtn.addEventListener("click", () => {
         lastUploadFilename = `badminton_match_${Date.now()}.${extension}`;
         cloudResults.style.display = "block";
         cloudResults.textContent = `Video captured: ${formatBytes(recordedVideoBlob.size)} · ${recordedFrames.length} movement frames. Choose your player before upload.`;
-        await promptMePlayerSelection();
-        await uploadVideoForAnalysis(recordedVideoBlob, lastUploadFilename);
+        cloudStatus.textContent = "Recording ready. Download it or choose Upload & Analyse Recording.";
+        recordMessage("Recording stopped. Choose Download or Upload & Analyse.");
       };
       mediaRecorder.start(2000);
       startAnnotatedRecording();
