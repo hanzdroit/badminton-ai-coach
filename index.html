@@ -1153,7 +1153,7 @@ async function runCloudUploadTest() {
     if (!initResponse.ok) throw new Error(initData.detail || `Could not create test upload (HTTP ${initResponse.status}).`);
     if (!initData.upload_url || !initData.test_id) throw new Error("Cloud API did not return a test upload URL.");
     stage = "Uploading test video to Google Cloud Storage";
-    await uploadBlobInChunks(initData.upload_url, file, "Test video upload");
+    await uploadBlobInChunks(initData.upload_url, file, "Uploading test video to Cloud Storage", status);
     stage = "Verifying upload and deleting temporary test file";
     const completeForm = new FormData();
     completeForm.append("filename", file.name);
@@ -1171,7 +1171,7 @@ async function runCloudUploadTest() {
   }
 }
 
-async function uploadBlobInChunks(uploadUrl, blob, label) {
+async function uploadBlobInChunks(uploadUrl, blob, label, progressTarget = cloudStatus) {
   const chunkSize = 8 * 1024 * 1024;
   let offset = 0;
   while (offset < blob.size) {
@@ -1184,7 +1184,7 @@ async function uploadBlobInChunks(uploadUrl, blob, label) {
       xhr.setRequestHeader("Content-Range", `bytes ${offset}-${endExclusive - 1}/${blob.size}`);
       xhr.upload.onprogress = event => {
         const uploaded = offset + (event.lengthComputable ? event.loaded : 0);
-        cloudStatus.textContent = `${label}… ${Math.min(100, Math.round(uploaded / blob.size * 100))}%`;
+        progressTarget.textContent = `${label}… ${Math.min(100, Math.round(uploaded / blob.size * 100))}%`;
       };
       xhr.onload = () => {
         if (xhr.status === 308 || xhr.status === 200 || xhr.status === 201) resolve(xhr.status);
