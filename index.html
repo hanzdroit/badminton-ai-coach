@@ -1488,9 +1488,13 @@ async function uploadVideoForAnalysis(blob, filename) {
 
 function addShareVideoDownload(base, jobId) {
   const existing = document.getElementById("shareVideoDownloadLink");
-  if (existing) return;
+  if (existing && existing.dataset.jobId === jobId) return;
+  if (existing) existing.remove();
+  const existingNote = document.getElementById("shareVideoDownloadNote");
+  if (existingNote) existingNote.remove();
   const link = document.createElement("a");
   link.id = "shareVideoDownloadLink";
+  link.dataset.jobId = jobId;
   link.href = `${base}/api/v1/jobs/${encodeURIComponent(jobId)}/share`;
   link.textContent = "Download MP4 for WhatsApp";
   link.download = `badminton_match_${jobId}.mp4`;
@@ -1503,6 +1507,7 @@ function addShareVideoDownload(base, jobId) {
   link.style.fontWeight = "700";
   link.style.textDecoration = "none";
   const note = document.createElement("p");
+  note.id = "shareVideoDownloadNote";
   note.className = "calibration-help";
   note.textContent = "Converted to MP4 (H.264/AAC). Download it, then attach the MP4 in WhatsApp.";
   cloudResults.appendChild(note);
