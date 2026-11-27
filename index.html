@@ -5,7 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#081426">
-<title>Badminton AI Coach V2.9a</title>
+<title>Badminton AI Coach V2.9b</title>
 
 <style>
 :root {
@@ -256,7 +256,7 @@ footer {
 <header>
   <h1>🏸 Badminton AI Coach</h1>
   <p>Live Player Detection & Skeleton Tracking</p>
-  <p>V2.9a · Upload existing video · Live record · Download or analyse · Match history</p>
+  <p>V2.9b · Upload existing video · Live record · Download or analyse · Match history</p>
 </header>
 
 <main>
@@ -470,7 +470,7 @@ footer {
 </main>
 
 <footer>
-  Badminton AI Coach V2.9a · Upload and live recording workflow
+  Badminton AI Coach V2.9b · Upload and live recording workflow
 </footer>
 
 <script type="module">
@@ -501,7 +501,7 @@ const shuttleStatus = document.getElementById("shuttleStatus");
 
 const cameraStatus = document.getElementById("cameraStatus");
 const recordStatus = document.getElementById("recordStatus");
-const APP_VERSION = "2.9";
+const APP_VERSION = "2.9b";
 let activeSessionId = localStorage.getItem("badmintonActiveSessionId") || null;
 const CLOUD_API_BASE = "https://badminton-cloud-api-330288568190.asia-southeast1.run.app";
 let lastUploadFilename = "";
@@ -1070,21 +1070,62 @@ document.getElementById("saveVideoBtn").addEventListener("click", () => {
   window.setTimeout(() => URL.revokeObjectURL(url), 60000);
   localBackupStatus.textContent = "Video download requested. Check your device's Downloads folder.";
 });
-saveAnnotatedBtn.addEventListener("click", () => {
+saveAnnotatedBtn.addEventListener("click", async () => {
   if (!annotatedVideoBlob || !annotatedVideoBlob.size) {
     localBackupStatus.textContent = "The AI detection video is not ready yet. Wait until recording has fully stopped.";
     return;
   }
-  const url = URL.createObjectURL(annotatedVideoBlob);
-  const link = document.createElement("a");
-  const extension = annotatedVideoBlob.type.includes("mp4") ? "mp4" : "webm";
-  link.href = url;
-  link.download = `badminton_ai_detection_${Date.now()}.${extension}`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 60000);
-  localBackupStatus.textContent = "AI Detection Video download requested. Check your Downloads folder.";
+  saveAnnotatedBtn.disabled = true;
+  try {
+    localBackupStatus.textContent = "Preparing secure upload of your AI Detection Video…";
+    const initForm = new FormData();
+    initForm.append("filename", `badminton_ai_detection_${Date.now()}.${annotatedVideoBlob.type.includes("mp4") ? "mp4" : "webm"}`);
+    initForm.append("size_bytes", String(annotatedVideoBlob.size));
+    initForm.append("content_type", annotatedVideoBlob.type || "video/webm");
+    initForm.append("origin", window.location.origin);
+    const initResponse = await fetch(CLOUD_API_BASE + "/api/v1/ai-video-conversions", {
+      method:"POST", headers:cloudHeaders(), body:initForm
+    });
+    const init = await initResponse.json().catch(() => ({}));
+    if (!initResponse.ok) throw new Error(init.detail || "Could not initialise AI video conversion.");
+    localBackupStatus.textContent = "Uploading AI Detection Video to the cloud…";
+    await uploadBlobInChunks(init.upload_url, annotatedVideoBlob, "Uploading AI Detection Video", localBackupStatus);
+    const completeForm = new FormData();
+    completeForm.append("filename", initForm.get("filename"));
+    completeForm.append("size_bytes", String(annotatedVideoBlob.size));
+    localBackupStatus.textContent = "Starting H.264/AAC MP4 conversion…";
+    const completeResponse = await fetch(CLOUD_API_BASE + `/api/v1/ai-video-conversions/${encodeURIComponent(init.conversion_id)}/complete`, {
+      method:"POST", headers:cloudHeaders(), body:completeForm
+    });
+    const complete = await completeResponse.json().catch(() => ({}));
+    if (!completeResponse.ok) throw new Error(complete.detail || "Could not start MP4 conversion.");
+    let converted = false;
+    for (let attempt = 0; attempt < 180; attempt++) {
+      await new Promise(resolve => window.setTimeout(resolve, 5000));
+      const statusResponse = await fetch(CLOUD_API_BASE + `/api/v1/ai-video-conversions/${encodeURIComponent(init.conversion_id)}`, {
+        headers:cloudHeaders()
+      });
+      const statusData = await statusResponse.json().catch(() => ({}));
+      if (!statusResponse.ok) throw new Error(statusData.detail || "Could not check MP4 conversion status.");
+      if (statusData.status === "completed") {
+        const download = document.createElement("a");
+        download.href = CLOUD_API_BASE + statusData.download_url;
+        download.download = `badminton_ai_detection_${init.conversion_id}.mp4`;
+        document.body.appendChild(download);
+        download.click();
+        download.remove();
+        localBackupStatus.textContent = "AI Detection Video converted to H.264/AAC MP4. Download started — share this MP4 through WhatsApp.";
+        converted = true;
+        break;
+      }
+      localBackupStatus.textContent = `Converting AI Detection Video to MP4… ${Math.min(99, Math.round((attempt + 1) / 180 * 100))}%`;
+    }
+    if (!converted) throw new Error("Conversion is taking longer than expected. Your uploaded source remains in Cloud Storage; retry the conversion status later.");
+  } catch (error) {
+    localBackupStatus.textContent = "AI Detection Video conversion failed: " + (error.message || String(error)) + ". Your original recording and movement data are still available.";
+  } finally {
+    saveAnnotatedBtn.disabled = !annotatedVideoBlob || !annotatedVideoBlob.size;
+  }
 });
 document.getElementById("saveMovementBtn").addEventListener("click", () => {
   if (!recordedFrames.length) {
