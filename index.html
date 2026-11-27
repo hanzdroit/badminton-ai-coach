@@ -5,7 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#081426">
-<title>Badminton AI Coach V2.8</title>
+<title>Badminton AI Coach V2.8a</title>
 
 <style>
 :root {
@@ -80,6 +80,11 @@ button:disabled {
   opacity:.4;
   cursor:not-allowed;
 }
+
+/* Recording is controlled from the single camera action button. */
+#startRecordBtn, #stopRecordBtn { display:none; }
+#cameraBtn { min-height:52px; font-size:16px; }
+#cameraBtn.danger { background:#a93645; }
 input[type=file] { font-size:12px; }
 a { color:var(--accent-blue); }
 
@@ -232,6 +237,11 @@ label {
 .me-player-options button { margin:0; }
 .me-player-options button.selected { outline:3px solid var(--yellow); background:#ffdc55; color:#14291e; }
 @media (max-width:520px) { .me-player-options { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+details.panel > summary { cursor:pointer; font-weight:bold; color:#dce9fb; list-style:none; }
+details.panel > summary::-webkit-details-marker { display:none; }
+details.panel > summary::after { content:"＋"; float:right; color:var(--accent-blue); }
+details.panel[open] > summary::after { content:"−"; }
+
 footer {
   text-align:center;
   padding:20px;
@@ -246,7 +256,7 @@ footer {
 <header>
   <h1>🏸 Badminton AI Coach</h1>
   <p>Live Player Detection & Skeleton Tracking</p>
-  <p>V2.8 · Upload existing video · Live record · Download or analyse · Match history</p>
+  <p>V2.8a · Upload existing video · Live record · Download or analyse · Match history</p>
 </header>
 
 <main>
@@ -290,7 +300,7 @@ footer {
     <div class="placeholder" id="placeholder">
       <div style="font-size:40px">📷</div>
       Camera not activated
-      <p>Enable camera to start AI detection</p>
+      <p>Open the camera to activate player detection, then use the same button to record.</p>
     </div>
 
     <video id="camera" autoplay muted playsinline></video>
@@ -316,7 +326,7 @@ footer {
     <span class="dot"></span> RECORDING MOVEMENT DATA
   </div>
 
-  <button id="cameraBtn">Enable Camera & AI</button>
+  <button id="cameraBtn">Open Camera</button>
   <button id="stopCameraBtn" class="secondary" disabled>
     Stop Camera
   </button>
@@ -326,6 +336,9 @@ footer {
   </p>
 </section>
 
+<details class="panel" id="advancedSettings">
+  <summary>Advanced Settings · Shuttle Detection & Court Calibration</summary>
+  <div style="margin-top:14px">
 <section class="panel">
   <h2>Experimental Shuttle Detection</h2>
   <p class="calibration-help">
@@ -368,9 +381,11 @@ footer {
     Court mapping: Not calibrated.
   </p>
 </section>
+  </div>
+</details>
 
 <section class="panel">
-  <h2>Match Recording</h2>
+  <h2>Recording Results & Downloads</h2>
 
   <p style="font-size:13px;color:var(--muted);line-height:1.6">
     V1.8 records video from the phone camera and structured movement data in one session. Point the phone at a laptop screen for YouTube testing, or at the court for a real match. When the app is hosted with its analysis service,
@@ -425,7 +440,7 @@ footer {
   </button>
 
   <p class="status" id="recordStatus">
-    Ready for detection.
+    Camera ready when you are.
   </p>
 </section>
 
@@ -455,7 +470,7 @@ footer {
 </main>
 
 <footer>
-  Badminton AI Coach V2.8 · Upload and live recording workflow
+  Badminton AI Coach V2.8a · Upload and live recording workflow
 </footer>
 
 <script type="module">
@@ -488,7 +503,7 @@ const shuttleStatus = document.getElementById("shuttleStatus");
 
 const cameraStatus = document.getElementById("cameraStatus");
 const recordStatus = document.getElementById("recordStatus");
-const APP_VERSION = "2.8";
+const APP_VERSION = "2.8a";
 let activeSessionId = localStorage.getItem("badmintonActiveSessionId") || null;
 const CLOUD_API_BASE = "https://badminton-cloud-api-330288568190.asia-southeast1.run.app";
 let lastUploadFilename = "";
@@ -1504,6 +1519,12 @@ refreshMatchHistory();
 // Camera activation
 cameraBtn.addEventListener("click", async () => {
 
+  if (cameraRunning) {
+    if (isRecording) stopRecordBtn.click();
+    else startRecordBtn.click();
+    return;
+  }
+
   cameraBtn.disabled = true;
 
   try {
@@ -1541,7 +1562,7 @@ cameraBtn.addEventListener("click", async () => {
     video.loop = false;
     resetShuttleDetector();
 
-    cameraBtn.textContent = "Camera Enabled";
+    cameraBtn.textContent = "Start Recording";
     stopCameraBtn.disabled = false;
     startRecordBtn.disabled = false;
     updateCalibrationUI();
@@ -1971,6 +1992,8 @@ startRecordBtn.addEventListener("click", () => {
   sessionStart = performance.now();
   lastSavedFrame = 0;
   isRecording = true;
+  cameraBtn.textContent = "Stop Recording";
+  cameraBtn.classList.add("danger");
 
   const recordingStream = stream;
   if (recordingStream && window.MediaRecorder) {
@@ -1994,6 +2017,8 @@ startRecordBtn.addEventListener("click", () => {
         lastUploadFilename = `badminton_match_${Date.now()}.${extension}`;
         cloudResults.style.display = "block";
         cloudResults.textContent = `Video captured: ${formatBytes(recordedVideoBlob.size)} · ${recordedFrames.length} movement frames. Choose your player before upload.`;
+        cameraBtn.textContent = "Start Recording";
+        cameraBtn.classList.remove("danger");
         cloudStatus.textContent = "Recording ready. Download it or choose Upload & Analyse Recording.";
         recordMessage("Recording stopped. Choose Download or Upload & Analyse.");
       };
@@ -2026,6 +2051,9 @@ stopRecordBtn.addEventListener("click", () => {
   if (!isRecording) return;
 
   isRecording = false;
+  cameraBtn.textContent = "Finalising Recording…";
+  cameraBtn.disabled = true;
+  cameraBtn.classList.remove("danger");
   if (annotatedRecorder && annotatedRecorder.state !== "inactive") annotatedRecorder.stop();
   if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
 
@@ -2129,7 +2157,8 @@ stopCameraBtn.addEventListener("click", () => {
   placeholder.style.display = "block";
 
   cameraBtn.disabled = false;
-  cameraBtn.textContent = "Enable Camera & AI";
+  cameraBtn.textContent = "Open Camera";
+  cameraBtn.classList.remove("danger");
 
   stopCameraBtn.disabled = true;
   startRecordBtn.disabled = true;
