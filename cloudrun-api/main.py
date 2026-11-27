@@ -148,7 +148,7 @@ def create_upload(session_id: str = Form(...), filename: str = Form("match.webm"
                   source: str = Form("camera"), origin: str = Form("")):
     if match_type not in ("singles","doubles"): raise HTTPException(400,"Invalid match_type.")
     if max_players not in (1,2,3,4): raise HTTPException(400,"max_players must be 1-4.")
-    if source != "camera": raise HTTPException(400,"Only camera recordings are accepted.")
+    if source not in ("camera","upload"): raise HTTPException(400,"source must be camera or upload.")
     if size_bytes <= 0: raise HTTPException(400,"Uploaded video is empty.")
     max_bytes = UPLOAD_LIMIT_MB * 1024 * 1024
     if size_bytes > max_bytes: raise HTTPException(413,f"Recording exceeds {UPLOAD_LIMIT_MB} MB limit.")
