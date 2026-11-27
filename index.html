@@ -5,7 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#081426">
-<title>Badminton AI Coach V2.6</title>
+<title>Badminton AI Coach V2.7</title>
 
 <style>
 :root {
@@ -246,7 +246,7 @@ footer {
 <header>
   <h1>🏸 Badminton AI Coach</h1>
   <p>Live Player Detection & Skeleton Tracking</p>
-  <p>V2.6 · Upload diagnostics · AI Detection Video Export · Local Backup · Direct Cloud Storage Upload · Me Player Selection · TrackNet Analysis</p>
+  <p>V2.7 · Cloud upload test mode · Upload diagnostics · AI Detection Video Export · Local Backup · Direct Cloud Storage Upload · Me Player Selection · TrackNet Analysis</p>
 </header>
 
 <main>
@@ -273,6 +273,14 @@ footer {
   <button id="newSessionBtn" class="secondary" type="button">Start New Session</button>
   <p class="calibration-help" id="sessionStatus">Connecting to match history…</p>
   <div id="matchHistoryList" class="calibration-help"></div>
+</section>
+
+<section class="panel" id="cloudUploadTestPanel">
+  <h2>Test Cloud Upload (No AI Analysis)</h2>
+  <p class="calibration-help">Choose any short MP4, WebM, MOV or M4V video from your phone. This test checks the browser-to-Google-Cloud-Storage upload only. It does not create a match, movement data or TrackNet job. The temporary test file is deleted automatically after verification.</p>
+  <input id="testVideoFile" type="file" accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov,.m4v">
+  <button id="testCloudUploadBtn" type="button">Test Video Upload</button>
+  <p id="testCloudUploadStatus" class="calibration-help" style="margin:10px 0 0">Select a short video to begin.</p>
 </section>
 
 <section class="panel">
@@ -445,7 +453,7 @@ footer {
 </main>
 
 <footer>
-  Badminton AI Coach V2.6 · AI detection video and local backup workflow
+  Badminton AI Coach V2.7 · Cloud upload test · AI detection video and local backup workflow
 </footer>
 
 <script type="module">
@@ -478,7 +486,7 @@ const shuttleStatus = document.getElementById("shuttleStatus");
 
 const cameraStatus = document.getElementById("cameraStatus");
 const recordStatus = document.getElementById("recordStatus");
-const APP_VERSION = "2.6";
+const APP_VERSION = "2.7";
 let activeSessionId = localStorage.getItem("badmintonActiveSessionId") || null;
 const CLOUD_API_BASE = "https://badminton-cloud-api-330288568190.asia-southeast1.run.app";
 let lastUploadFilename = "";
@@ -1013,6 +1021,8 @@ function formatBytes(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
+document.getElementById("testCloudUploadBtn").addEventListener("click", runCloudUploadTest);
+
 const retryUploadBtn = document.getElementById("retryUploadBtn");
 retryUploadBtn.addEventListener("click", () => {
   if (recordedVideoBlob && lastUploadFilename && !uploadInProgress) {
@@ -1113,6 +1123,53 @@ document.getElementById("newSessionBtn")?.addEventListener("click", async () => 
   try { await createCloudSession(); document.getElementById("sessionStatus").textContent = "New session ready. Your next recording will be Match 1 in this session."; }
   catch (error) { document.getElementById("sessionStatus").textContent = error.message; }
 });
+
+async function runCloudUploadTest() {
+  const fileInput = document.getElementById("testVideoFile");
+  const button = document.getElementById("testCloudUploadBtn");
+  const status = document.getElementById("testCloudUploadStatus");
+  const file = fileInput.files && fileInput.files[0];
+  if (!file) {
+    status.textContent = "Please select a video file first.";
+    return;
+  }
+  if (!/\\.(mp4|webm|mov|m4v)$/i.test(file.name)) {
+    status.textContent = "Unsupported file. Choose MP4, WebM, MOV or M4V.";
+    return;
+  }
+  button.disabled = true;
+  let stage = "Requesting a temporary upload URL";
+  status.textContent = "Preparing test upload…";
+  try {
+    const initForm = new FormData();
+    initForm.append("filename", file.name);
+    initForm.append("size_bytes", String(file.size));
+    initForm.append("content_type", file.type || "application/octet-stream");
+    initForm.append("origin", window.location.origin);
+    const initResponse = await fetch(CLOUD_API_BASE + "/api/v1/test-uploads", {
+      method: "POST", headers: cloudHeaders(), body: initForm
+    });
+    const initData = await initResponse.json().catch(() => ({}));
+    if (!initResponse.ok) throw new Error(initData.detail || `Could not create test upload (HTTP ${initResponse.status}).`);
+    if (!initData.upload_url || !initData.test_id) throw new Error("Cloud API did not return a test upload URL.");
+    stage = "Uploading test video to Google Cloud Storage";
+    await uploadBlobInChunks(initData.upload_url, file, "Test video upload");
+    stage = "Verifying upload and deleting temporary test file";
+    const completeForm = new FormData();
+    completeForm.append("filename", file.name);
+    completeForm.append("size_bytes", String(file.size));
+    const completeResponse = await fetch(CLOUD_API_BASE + `/api/v1/test-uploads/${encodeURIComponent(initData.test_id)}/complete`, {
+      method: "POST", headers: cloudHeaders(), body: completeForm
+    });
+    const result = await completeResponse.json().catch(() => ({}));
+    if (!completeResponse.ok) throw new Error(result.detail || `Verification failed (HTTP ${completeResponse.status}).`);
+    status.textContent = `SUCCESS: ${file.name} (${formatBytes(result.video_size_bytes)}) uploaded and verified. Temporary file deleted. No match or AI analysis was created.`;
+  } catch (error) {
+    status.textContent = `FAILED during: ${stage}. ${error.message || String(error)}`;
+  } finally {
+    button.disabled = false;
+  }
+}
 
 async function uploadBlobInChunks(uploadUrl, blob, label) {
   const chunkSize = 8 * 1024 * 1024;
