@@ -6,6 +6,7 @@ import google.auth
 from google.auth.transport.requests import AuthorizedSession
 from google.cloud import storage
 from fastapi import FastAPI, Form, HTTPException
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 PROJECT_ID = os.environ["GCP_PROJECT_ID"]
@@ -13,7 +14,7 @@ REGION = os.getenv("GCP_REGION", "asia-southeast1")
 JOB_NAME = os.getenv("TRACKNET_JOB_NAME", "badminton-tracknet-worker")
 BUCKET_NAME = os.environ["GCS_BUCKET"]
 UPLOAD_LIMIT_MB = int(os.getenv("UPLOAD_LIMIT_MB", "500"))
-API_VERSION = "2.8d-session-cors-fix"
+API_VERSION = "2.9a-mp4-share"
 
 app = FastAPI(title="Badminton AI Coach Cloud API", version=API_VERSION)
 # GitHub Pages is the production frontend. Always allow its origin even when
@@ -241,8 +242,13 @@ def complete_upload(job_id: str):
 @app.get("/api/v1/jobs/{job_id}")
 def job_status(job_id: str):
     job = read_job(job_id)
+    share_blob = bucket.blob(f"shares/{job_id}.mp4")
+    share_available = share_blob.exists()
     operation_name = job.get("operation_name")
-    if not operation_name: return {"job_id":job_id,"status":job["status"],"progress":job["progress"]}
+    if not operation_name:
+        return {"job_id":job_id,"status":job["status"],"progress":job["progress"],
+                "share_video_available":share_available,
+                "share_video_url":f"/api/v1/jobs/{job_id}/share" if share_available else None}
     op_response = session.get(f"https://run.googleapis.com/v2/{operation_name}", timeout=30)
     if not op_response.ok: raise HTTPException(502, f"Could not read Cloud Run operation: {op_response.text[:800]}")
     op = op_response.json()
@@ -274,8 +280,37 @@ def job_status(job_id: str):
     write_job(job)
     if job.get("session_id"):
         update_session_match(job["session_id"], {"job_id":job_id,"filename":job.get("filename"),"status":job["status"],"size_bytes":job.get("size_bytes",0),"match_type":job.get("match_type"),"max_players":job.get("max_players"),"result_verified":job.get("result_verified",False),"error":job.get("error")})
+    share_blob = bucket.blob(f"shares/{job_id}.mp4")
+    share_available = share_blob.exists()
     return {"job_id":job_id,"session_id":job.get("session_id"),"status":job["status"],"progress":job["progress"],"error":job.get("error"),
+            "share_video_available":share_available,
+            "share_video_url":f"/api/v1/jobs/{job_id}/share" if share_available else None,
             "upload":{"received":True,"size_bytes":job["size_bytes"],"movement_frame_count":job.get("movement_frame_count",0)}}
+
+@app.get("/api/v1/jobs/{job_id}/share")
+def download_share_video(job_id: str):
+    """Stream the normalized H.264/AAC MP4 copy for download and WhatsApp sharing."""
+    blob = bucket.blob(f"shares/{job_id}.mp4")
+    if not blob.exists():
+        raise HTTPException(404, "WhatsApp-ready MP4 is not ready yet. The worker must finish video conversion first.")
+    blob.reload()
+
+    def stream_video():
+        with blob.open("rb") as source:
+            while True:
+                chunk = source.read(8 * 1024 * 1024)
+                if not chunk:
+                    break
+                yield chunk
+
+    headers = {
+        "Content-Disposition": f'attachment; filename="badminton_match_{job_id}.mp4"',
+        "Content-Length": str(blob.size or 0),
+        "Cache-Control": "private, no-store",
+        "Accept-Ranges": "none",
+    }
+    return StreamingResponse(stream_video(), media_type="video/mp4", headers=headers)
+
 
 @app.get("/api/v1/jobs/{job_id}/result")
 def job_result(job_id: str):
