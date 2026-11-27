@@ -14,7 +14,7 @@ REGION = os.getenv("GCP_REGION", "asia-southeast1")
 JOB_NAME = os.getenv("TRACKNET_JOB_NAME", "badminton-tracknet-worker")
 BUCKET_NAME = os.environ["GCS_BUCKET"]
 UPLOAD_LIMIT_MB = int(os.getenv("UPLOAD_LIMIT_MB", "500"))
-API_VERSION = "2.9a-mp4-share"
+API_VERSION = "2.9b-ai-overlay-mp4"
 
 app = FastAPI(title="Badminton AI Coach Cloud API", version=API_VERSION)
 # GitHub Pages is the production frontend. Always allow its origin even when
