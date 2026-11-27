@@ -90,7 +90,7 @@ def main() -> int:
     success = False
 
     try:
-        print("Worker V2.9: downloading source video and model checkpoints", flush=True)
+        print("Worker V2.9a: downloading source video and model checkpoints", flush=True)
         log_memory("before_download")
         download_gcs(client, input_uri, local_video)
         download_gcs(client, tracknet_uri, local_tracknet)
@@ -100,10 +100,11 @@ def main() -> int:
         # Transcode to a decoder-friendly MP4 container (video only).
         transcode = [
             "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
-            "-i", str(local_video), "-map", "0:v:0", "-an",
+            "-i", str(local_video), "-map", "0:v:0", "-map", "0:a:0?",
             "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
-            "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(analysis_video),
+            "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k",
+            "-movflags", "+faststart", str(analysis_video),
         ]
         print("Worker V2.9: normalizing source video with ffmpeg", flush=True)
         converted = subprocess.run(transcode, capture_output=True, text=True)
@@ -111,6 +112,14 @@ def main() -> int:
             detail = (converted.stderr or "ffmpeg produced no output")[-2000:]
             raise RuntimeError(f"Could not normalize uploaded video to MP4: {detail}")
         log_memory("after_transcode")
+
+        # Keep a phone/WhatsApp-friendly H.264 + AAC MP4 before inference starts.
+        # This survives a later TrackNet failure and is separate from the raw upload.
+        share_uri = f"gs://{input_bucket_name}/shares/{Path(input_object_name).stem}.mp4"
+        upload_file(client, analysis_video, share_uri)
+        print(json.dumps({"worker_version":"2.9a","stage":"share_mp4_ready","share_uri":share_uri,
+                          "size_bytes":analysis_video.stat().st_size}), flush=True)
+
         probe = cv2.VideoCapture(str(analysis_video))
         readable, first_frame = probe.read()
         probe.release()
@@ -191,7 +200,7 @@ def main() -> int:
         upload_file(client, json_path, json_uri)
         success = True
         log_memory("after_result_upload")
-        print(json.dumps({"worker_version": "2.9", "status": "completed", "point_count": len(points), "csv_uri": csv_uri, "result_uri": json_uri}), flush=True)
+        print(json.dumps({"worker_version": "2.9a", "status": "completed", "point_count": len(points), "csv_uri": csv_uri, "result_uri": json_uri}), flush=True)
         return 0
     finally:
         # Delete the source object only after successful inference AND result upload.
