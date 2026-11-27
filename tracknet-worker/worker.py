@@ -70,7 +70,7 @@ def upload_file(client: storage.Client, source: Path, destination_uri: str) -> N
 def main() -> int:
     input_uri = os.environ["INPUT_URI"]
     output_uri = os.environ["OUTPUT_URI"].rstrip("/")
-    tracknet_uri = os.environ["TRACKNET_CHECKPOINT_URI"]
+    tracknet_uri = os.getenv("TRACKNET_CHECKPOINT_URI", "")
     inpaint_uri = os.getenv("INPAINTNET_CHECKPOINT_URI", "")
     convert_only = os.getenv("CONVERT_ONLY", "false").lower() == "true"
     share_output_uri = os.getenv("SHARE_OUTPUT_URI", "")
