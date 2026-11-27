@@ -1133,7 +1133,7 @@ async function runCloudUploadTest() {
     status.textContent = "Please select a video file first.";
     return;
   }
-  if (!/\\.(mp4|webm|mov|m4v)$/i.test(file.name)) {
+  if (!/\.(mp4|webm|mov|m4v)$/i.test(file.name)) {
     status.textContent = "Unsupported file. Choose MP4, WebM, MOV or M4V.";
     return;
   }
