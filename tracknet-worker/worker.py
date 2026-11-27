@@ -16,9 +16,33 @@ TRACKNET_DIR = Path(os.getenv("TRACKNET_DIR", "/opt/TrackNetV3"))
 WORK_DIR = Path(os.getenv("WORK_DIR", "/tmp/badminton-job"))
 CHECKPOINT_DIR = Path(os.getenv("CHECKPOINT_DIR", "/tmp/checkpoints"))
 DELETE_SOURCE_AFTER_SUCCESS = os.getenv("DELETE_SOURCE_AFTER_SUCCESS", "false").lower() == "true"
-BATCH_SIZE = os.getenv("BATCH_SIZE", "2")
+BATCH_SIZE = os.getenv("BATCH_SIZE", "1")
 LARGE_VIDEO = os.getenv("LARGE_VIDEO", "true").lower() == "true"
 MAX_SAMPLE_NUM = os.getenv("MAX_SAMPLE_NUM", "1800")
+
+
+def log_memory(stage: str) -> None:
+    """Log container memory usage where the Cloud Run cgroup exposes it."""
+    values = {}
+    for key, path in (
+        ("current_bytes", "/sys/fs/cgroup/memory.current"),
+        ("limit_bytes", "/sys/fs/cgroup/memory.max"),
+    ):
+        try:
+            raw = Path(path).read_text(encoding="utf-8").strip()
+            values[key] = raw if raw == "max" else int(raw)
+        except (OSError, ValueError):
+            pass
+    try:
+        status = Path("/proc/self/status").read_text(encoding="utf-8")
+        for line in status.splitlines():
+            if line.startswith(("VmRSS:", "VmHWM:")):
+                key, value = line.split(":", 1)
+                values[key] = value.strip()
+    except OSError:
+        pass
+    print(json.dumps({"stage": stage, "memory": values}), flush=True)
+
 
 
 def parse_gs_uri(uri: str) -> tuple[str, str]:
@@ -66,9 +90,12 @@ def main() -> int:
     success = False
 
     try:
+        print("Worker V2.9: downloading source video and model checkpoints", flush=True)
+        log_memory("before_download")
         download_gcs(client, input_uri, local_video)
         download_gcs(client, tracknet_uri, local_tracknet)
         download_gcs(client, inpaint_uri, local_inpaint)
+        log_memory("after_download")
 
         # Transcode to a decoder-friendly MP4 container (video only).
         transcode = [
@@ -78,10 +105,12 @@ def main() -> int:
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
             "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(analysis_video),
         ]
+        print("Worker V2.9: normalizing source video with ffmpeg", flush=True)
         converted = subprocess.run(transcode, capture_output=True, text=True)
         if converted.returncode != 0 or not analysis_video.exists() or analysis_video.stat().st_size == 0:
             detail = (converted.stderr or "ffmpeg produced no output")[-2000:]
             raise RuntimeError(f"Could not normalize uploaded video to MP4: {detail}")
+        log_memory("after_transcode")
         probe = cv2.VideoCapture(str(analysis_video))
         readable, first_frame = probe.read()
         probe.release()
@@ -101,8 +130,24 @@ def main() -> int:
 
         import torch
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        print(f"Starting TrackNetV3 inference on {device}", flush=True)
-        subprocess.run(command, check=True, cwd=str(TRACKNET_DIR))
+        print(
+            f"Worker V2.9: starting TrackNetV3 inference on {device}; "
+            f"batch_size={BATCH_SIZE}; large_video={LARGE_VIDEO}; "
+            f"max_sample_num={MAX_SAMPLE_NUM}",
+            flush=True,
+        )
+        log_memory("before_tracknet_inference")
+        try:
+            subprocess.run(command, check=True, cwd=str(TRACKNET_DIR))
+        except subprocess.CalledProcessError as exc:
+            print(
+                f"TrackNet subprocess failed: returncode={exc.returncode}; "
+                f"signal={-exc.returncode if exc.returncode < 0 else None}",
+                flush=True,
+            )
+            log_memory("after_tracknet_failure")
+            raise
+        log_memory("after_tracknet_inference")
 
         csv_path = result_dir / f"{analysis_video.stem}_ball.csv"
         if not csv_path.exists():
@@ -145,7 +190,8 @@ def main() -> int:
         upload_file(client, csv_path, csv_uri)
         upload_file(client, json_path, json_uri)
         success = True
-        print(json.dumps({"status": "completed", "point_count": len(points), "csv_uri": csv_uri, "result_uri": json_uri}), flush=True)
+        log_memory("after_result_upload")
+        print(json.dumps({"worker_version": "2.9", "status": "completed", "point_count": len(points), "csv_uri": csv_uri, "result_uri": json_uri}), flush=True)
         return 0
     finally:
         # Delete the source object only after successful inference AND result upload.
