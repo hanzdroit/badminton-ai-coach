@@ -1107,6 +1107,7 @@ saveAnnotatedBtn.addEventListener("click", async () => {
       });
       const statusData = await statusResponse.json().catch(() => ({}));
       if (!statusResponse.ok) throw new Error(statusData.detail || "Could not check MP4 conversion status.");
+      if (statusData.status === "failed") throw new Error(statusData.error || "Cloud MP4 conversion failed.");
       if (statusData.status === "completed") {
         const download = document.createElement("a");
         download.href = CLOUD_API_BASE + statusData.download_url;
