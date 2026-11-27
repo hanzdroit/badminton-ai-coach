@@ -287,6 +287,94 @@ def job_status(job_id: str):
             "share_video_url":f"/api/v1/jobs/{job_id}/share" if share_available else None,
             "upload":{"received":True,"size_bytes":job["size_bytes"],"movement_frame_count":job.get("movement_frame_count",0)}}
 
+
+
+@app.post("/api/v1/ai-video-conversions")
+def create_ai_video_conversion(filename: str = Form("ai-detection.webm"),
+                               size_bytes: int = Form(...),
+                               content_type: str = Form("video/webm"),
+                               origin: str = Form("")):
+    """Create a resumable upload for a locally rendered AI-overlay video."""
+    if size_bytes <= 0:
+        raise HTTPException(400, "AI Detection Video is empty.")
+    if size_bytes > UPLOAD_LIMIT_MB * 1024 * 1024:
+        raise HTTPException(413, f"AI Detection Video exceeds {UPLOAD_LIMIT_MB} MB.")
+    safe_filename = Path(filename or "ai-detection.webm").name
+    suffix = Path(safe_filename).suffix.lower()
+    if suffix not in (".webm", ".mp4", ".mov", ".m4v"):
+        suffix = ".webm"
+    conversion_id = str(uuid.uuid4())
+    object_name = f"ai-video-input/{conversion_id}{suffix}"
+    blob = bucket.blob(object_name)
+    try:
+        upload_url = blob.create_resumable_upload_session(
+            content_type=content_type or "application/octet-stream",
+            origin=origin or None
+        )
+    except Exception as exc:
+        raise HTTPException(502, f"Could not create AI video upload URL: {exc}")
+    return {"conversion_id": conversion_id, "upload_url": upload_url,
+            "chunk_size_bytes": 8 * 1024 * 1024, "max_upload_mb": UPLOAD_LIMIT_MB}
+
+
+@app.post("/api/v1/ai-video-conversions/{conversion_id}/complete")
+def complete_ai_video_conversion(conversion_id: str, filename: str = Form(...),
+                                 size_bytes: int = Form(...)):
+    safe_filename = Path(filename or "ai-detection.webm").name
+    suffix = Path(safe_filename).suffix.lower()
+    if suffix not in (".webm", ".mp4", ".mov", ".m4v"):
+        suffix = ".webm"
+    input_name = f"ai-video-input/{conversion_id}{suffix}"
+    input_blob = bucket.blob(input_name)
+    if not input_blob.exists():
+        raise HTTPException(404, "Uploaded AI Detection Video was not found.")
+    input_blob.reload()
+    actual_size = int(input_blob.size or 0)
+    if actual_size != int(size_bytes):
+        raise HTTPException(409, f"AI video size mismatch: expected {size_bytes}, received {actual_size}.")
+    share_uri = f"gs://{BUCKET_NAME}/ai-video-output/{conversion_id}.mp4"
+    overrides = {"overrides":{"containerOverrides":[{"env":[
+        {"name":"INPUT_URI","value":f"gs://{BUCKET_NAME}/{input_name}"},
+        {"name":"OUTPUT_URI","value":f"gs://{BUCKET_NAME}/ai-video-output/{conversion_id}"},
+        {"name":"SHARE_OUTPUT_URI","value":share_uri},
+        {"name":"CONVERT_ONLY","value":"true"},
+        {"name":"DELETE_SOURCE_AFTER_SUCCESS","value":"false"}
+    ]}]}}
+    response = session.post(RUN_URL, json=overrides, timeout=60)
+    if not response.ok:
+        raise HTTPException(502, f"Could not start AI video conversion: {response.text[:1000]}")
+    return {"conversion_id":conversion_id,"status":"converting",
+            "operation_name":response.json().get("name")}
+
+
+@app.get("/api/v1/ai-video-conversions/{conversion_id}")
+def ai_video_conversion_status(conversion_id: str):
+    blob = bucket.blob(f"ai-video-output/{conversion_id}.mp4")
+    if blob.exists():
+        blob.reload()
+        return {"conversion_id":conversion_id,"status":"completed","size_bytes":int(blob.size or 0),
+                "download_url":f"/api/v1/ai-video-conversions/{conversion_id}/download"}
+    return {"conversion_id":conversion_id,"status":"converting"}
+
+
+@app.get("/api/v1/ai-video-conversions/{conversion_id}/download")
+def download_ai_video_conversion(conversion_id: str):
+    blob = bucket.blob(f"ai-video-output/{conversion_id}.mp4")
+    if not blob.exists():
+        raise HTTPException(404, "Converted AI Detection MP4 is not ready yet.")
+    blob.reload()
+    def stream_video():
+        with blob.open("rb") as source:
+            while True:
+                chunk = source.read(8 * 1024 * 1024)
+                if not chunk:
+                    break
+                yield chunk
+    headers = {"Content-Disposition":f'attachment; filename="badminton_ai_detection_{conversion_id}.mp4"',
+               "Content-Length":str(blob.size or 0),"Cache-Control":"private, no-store"}
+    return StreamingResponse(stream_video(), media_type="video/mp4", headers=headers)
+
+
 @app.get("/api/v1/jobs/{job_id}/share")
 def download_share_video(job_id: str):
     """Stream the normalized H.264/AAC MP4 copy for download and WhatsApp sharing."""
