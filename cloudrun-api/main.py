@@ -61,6 +61,63 @@ def health():
             "tracknet_ready":True,"inpaintnet_ready":True,"upload_limit_mb":UPLOAD_LIMIT_MB,"upload_mode":"direct_gcs_resumable",
             "message":"Cloud Run API is connected to Cloud Storage and the TrackNet Cloud Run Job."}
 
+@app.post("/api/v1/test-uploads")
+def create_test_upload(filename: str = Form("test-video.mp4"),
+                       size_bytes: int = Form(...),
+                       content_type: str = Form("application/octet-stream"),
+                       origin: str = Form("")):
+    """Create a temporary upload target for testing browser-to-Storage transfer only."""
+    if size_bytes <= 0:
+        raise HTTPException(400, "Selected video is empty.")
+    max_bytes = UPLOAD_LIMIT_MB * 1024 * 1024
+    if size_bytes > max_bytes:
+        raise HTTPException(413, f"Test video exceeds the {UPLOAD_LIMIT_MB} MB upload limit.")
+    safe_filename = Path(filename or "test-video.mp4").name
+    suffix = Path(safe_filename).suffix.lower()
+    if suffix not in (".webm", ".mp4", ".mov", ".m4v"):
+        raise HTTPException(400, "Choose an MP4, WebM, MOV or M4V video.")
+    test_id = str(uuid.uuid4())
+    object_name = f"test-uploads/{test_id}/{safe_filename}"
+    blob = bucket.blob(object_name)
+    try:
+        upload_url = blob.create_resumable_upload_session(
+            content_type=content_type or "application/octet-stream",
+            origin=origin or None
+        )
+    except Exception as exc:
+        raise HTTPException(502, f"Could not create test upload URL: {exc}")
+    return {
+        "test_id": test_id,
+        "upload_url": upload_url,
+        "chunk_size_bytes": 8 * 1024 * 1024,
+        "max_upload_mb": UPLOAD_LIMIT_MB
+    }
+
+
+@app.post("/api/v1/test-uploads/{test_id}/complete")
+def complete_test_upload(test_id: str, filename: str = Form(...), size_bytes: int = Form(...)):
+    """Verify the temporary object size, then delete it; never create an analysis job."""
+    safe_filename = Path(filename or "test-video.mp4").name
+    object_name = f"test-uploads/{test_id}/{safe_filename}"
+    blob = bucket.blob(object_name)
+    if not blob.exists():
+        raise HTTPException(404, "Test video was not found in Cloud Storage.")
+    blob.reload()
+    actual_size = int(blob.size or 0)
+    if actual_size != int(size_bytes):
+        blob.delete()
+        raise HTTPException(409, f"Size mismatch: expected {size_bytes} bytes, received {actual_size}. Test object was deleted.")
+    blob.delete()
+    return {
+        "test_id": test_id,
+        "upload_verified": True,
+        "video_size_bytes": actual_size,
+        "temporary_object_deleted": True,
+        "analysis_started": False,
+        "message": "Cloud Storage upload verified successfully. Temporary test video deleted; no match or AI job was created."
+    }
+
+
 @app.post("/api/v1/sessions")
 def create_session():
     from datetime import datetime, timezone
