@@ -13,7 +13,7 @@ REGION = os.getenv("GCP_REGION", "asia-southeast1")
 JOB_NAME = os.getenv("TRACKNET_JOB_NAME", "badminton-tracknet-worker")
 BUCKET_NAME = os.environ["GCS_BUCKET"]
 UPLOAD_LIMIT_MB = int(os.getenv("UPLOAD_LIMIT_MB", "500"))
-API_VERSION = "2.1-direct-gcs-resumable"
+API_VERSION = "2.8-upload-analysis-workflow"
 
 app = FastAPI(title="Badminton AI Coach Cloud API", version=API_VERSION)
 origins = [x.strip() for x in os.getenv("ALLOWED_ORIGINS", "*").split(",") if x.strip()]
