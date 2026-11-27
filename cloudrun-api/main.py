@@ -13,13 +13,18 @@ REGION = os.getenv("GCP_REGION", "asia-southeast1")
 JOB_NAME = os.getenv("TRACKNET_JOB_NAME", "badminton-tracknet-worker")
 BUCKET_NAME = os.environ["GCS_BUCKET"]
 UPLOAD_LIMIT_MB = int(os.getenv("UPLOAD_LIMIT_MB", "500"))
-API_VERSION = "2.8-upload-analysis-workflow"
+API_VERSION = "2.8d-session-cors-fix"
 
 app = FastAPI(title="Badminton AI Coach Cloud API", version=API_VERSION)
-origins = [x.strip() for x in os.getenv("ALLOWED_ORIGINS", "*").split(",") if x.strip()]
-app.add_middleware(CORSMiddleware, allow_origins=["*"] if origins == ["*"] else origins,
+# GitHub Pages is the production frontend. Always allow its origin even when
+# ALLOWED_ORIGINS is configured for another environment; keep wildcard mode
+# when explicitly configured as "*".
+configured_origins = [x.strip() for x in os.getenv("ALLOWED_ORIGINS", "*").split(",") if x.strip()]
+production_origins = ["https://hanzdroit.github.io"]
+allowed_origins = ["*"] if "*" in configured_origins else list(dict.fromkeys(configured_origins + production_origins))
+app.add_middleware(CORSMiddleware, allow_origins=allowed_origins,
                    allow_credentials=False, allow_methods=["GET","POST","OPTIONS"],
-                   allow_headers=["Authorization","Content-Type"])
+                   allow_headers=["*"], expose_headers=["Location","Range","Content-Range"])
 
 credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
 session = AuthorizedSession(credentials)
