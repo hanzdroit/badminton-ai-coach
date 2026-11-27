@@ -5,7 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#081426">
-<title>Badminton AI Coach V2.8c</title>
+<title>Badminton AI Coach V2.8d</title>
 
 <style>
 :root {
@@ -256,7 +256,7 @@ footer {
 <header>
   <h1>🏸 Badminton AI Coach</h1>
   <p>Live Player Detection & Skeleton Tracking</p>
-  <p>V2.8c · Upload existing video · Live record · Download or analyse · Match history</p>
+  <p>V2.8d · Upload existing video · Live record · Download or analyse · Match history</p>
 </header>
 
 <main>
@@ -470,7 +470,7 @@ footer {
 </main>
 
 <footer>
-  Badminton AI Coach V2.8c · Upload and live recording workflow
+  Badminton AI Coach V2.8d · Upload and live recording workflow
 </footer>
 
 <script type="module">
@@ -501,7 +501,7 @@ const shuttleStatus = document.getElementById("shuttleStatus");
 
 const cameraStatus = document.getElementById("cameraStatus");
 const recordStatus = document.getElementById("recordStatus");
-const APP_VERSION = "2.8c";
+const APP_VERSION = "2.8d";
 let activeSessionId = localStorage.getItem("badmintonActiveSessionId") || null;
 const CLOUD_API_BASE = "https://badminton-cloud-api-330288568190.asia-southeast1.run.app";
 let lastUploadFilename = "";
@@ -1104,8 +1104,16 @@ document.getElementById("saveMovementBtn").addEventListener("click", () => {
 });
 
 async function createCloudSession() {
-  const response = await fetch(CLOUD_API_BASE + "/api/v1/sessions", { method:"POST", headers:cloudHeaders() });
-  if (!response.ok) throw new Error("Could not create a cloud match session.");
+  let response;
+  try {
+    response = await fetch(CLOUD_API_BASE + "/api/v1/sessions", { method:"POST", headers:cloudHeaders(), mode:"cors" });
+  } catch (error) {
+    throw new Error("Could not reach Cloud Run to create a match session. Check API CORS, public access and network connection. Browser detail: " + (error.message || String(error)));
+  }
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error("Cloud Run session request returned HTTP " + response.status + (detail ? ": " + detail.slice(0,300) : ""));
+  }
   const data = await response.json();
   activeSessionId = data.session_id;
   localStorage.setItem("badmintonActiveSessionId", activeSessionId);
