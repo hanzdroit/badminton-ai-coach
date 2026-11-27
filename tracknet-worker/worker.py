@@ -56,6 +56,9 @@ def main() -> int:
     input_name = Path(input_object_name).name
     suffix = Path(input_name).suffix.lower() or ".mp4"
     local_video = WORK_DIR / f"input{suffix}"
+    # Normalize every source container to H.264 MP4 before TrackNet. OpenCV/
+    # the upstream TrackNet dataset reader may not decode phone WebM reliably.
+    analysis_video = WORK_DIR / "tracknet_input.mp4"
     local_tracknet = CHECKPOINT_DIR / "TrackNet_best.pt"
     local_inpaint = CHECKPOINT_DIR / "InpaintNet_best.pt"
     result_dir = WORK_DIR / "prediction"
@@ -67,9 +70,27 @@ def main() -> int:
         download_gcs(client, tracknet_uri, local_tracknet)
         download_gcs(client, inpaint_uri, local_inpaint)
 
+        # Transcode to a decoder-friendly MP4 container (video only).
+        transcode = [
+            "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+            "-i", str(local_video), "-map", "0:v:0", "-an",
+            "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+            "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(analysis_video),
+        ]
+        converted = subprocess.run(transcode, capture_output=True, text=True)
+        if converted.returncode != 0 or not analysis_video.exists() or analysis_video.stat().st_size == 0:
+            detail = (converted.stderr or "ffmpeg produced no output")[-2000:]
+            raise RuntimeError(f"Could not normalize uploaded video to MP4: {detail}")
+        probe = cv2.VideoCapture(str(analysis_video))
+        readable, first_frame = probe.read()
+        probe.release()
+        if not readable or first_frame is None:
+            raise RuntimeError("Uploaded video could not be decoded after MP4 normalization; no readable video frames found.")
+
         command = [
             sys.executable, str(TRACKNET_DIR / "predict.py"),
-            "--video_file", str(local_video),
+            "--video_file", str(analysis_video),
             "--tracknet_file", str(local_tracknet),
             "--inpaintnet_file", str(local_inpaint),
             "--batch_size", BATCH_SIZE,
@@ -83,11 +104,11 @@ def main() -> int:
         print(f"Starting TrackNetV3 inference on {device}", flush=True)
         subprocess.run(command, check=True, cwd=str(TRACKNET_DIR))
 
-        csv_path = result_dir / f"{local_video.stem}_ball.csv"
+        csv_path = result_dir / f"{analysis_video.stem}_ball.csv"
         if not csv_path.exists():
             raise FileNotFoundError(f"TrackNetV3 did not create expected CSV: {csv_path}")
 
-        cap = cv2.VideoCapture(str(local_video))
+        cap = cv2.VideoCapture(str(analysis_video))
         fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
         frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
         cap.release()
@@ -130,7 +151,7 @@ def main() -> int:
         # Delete the source object only after successful inference AND result upload.
         if success and DELETE_SOURCE_AFTER_SUCCESS:
             client.bucket(input_bucket_name).blob(input_object_name).delete()
-        for path in (local_video, local_tracknet, local_inpaint):
+        for path in (local_video, analysis_video, local_tracknet, local_inpaint):
             path.unlink(missing_ok=True)
 
 
