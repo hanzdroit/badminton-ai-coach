@@ -343,8 +343,13 @@ def complete_ai_video_conversion(conversion_id: str, filename: str = Form(...),
     response = session.post(RUN_URL, json=overrides, timeout=60)
     if not response.ok:
         raise HTTPException(502, f"Could not start AI video conversion: {response.text[:1000]}")
+    operation_name = response.json().get("name")
+    bucket.blob(f"ai-video-conversions/{conversion_id}.json").upload_from_string(
+        json.dumps({"conversion_id":conversion_id,"status":"converting","operation_name":operation_name,
+                    "input_uri":f"gs://{BUCKET_NAME}/{input_name}","output_uri":share_uri}),
+        content_type="application/json")
     return {"conversion_id":conversion_id,"status":"converting",
-            "operation_name":response.json().get("name")}
+            "operation_name":operation_name}
 
 
 @app.get("/api/v1/ai-video-conversions/{conversion_id}")
@@ -354,6 +359,17 @@ def ai_video_conversion_status(conversion_id: str):
         blob.reload()
         return {"conversion_id":conversion_id,"status":"completed","size_bytes":int(blob.size or 0),
                 "download_url":f"/api/v1/ai-video-conversions/{conversion_id}/download"}
+    metadata_blob = bucket.blob(f"ai-video-conversions/{conversion_id}.json")
+    if metadata_blob.exists():
+        metadata = json.loads(metadata_blob.download_as_text())
+        operation_name = metadata.get("operation_name")
+        if operation_name:
+            operation_response = session.get(f"https://run.googleapis.com/v2/{operation_name}", timeout=20)
+            if operation_response.ok:
+                operation = operation_response.json()
+                if operation.get("done") and operation.get("error"):
+                    return {"conversion_id":conversion_id,"status":"failed",
+                            "error":operation["error"].get("message","Cloud conversion job failed.")}
     return {"conversion_id":conversion_id,"status":"converting"}
 
 
