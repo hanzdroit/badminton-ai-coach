@@ -1533,53 +1533,79 @@ cameraBtn.addEventListener("click", async () => {
       throw new Error("Camera requires HTTPS or localhost.");
     }
 
-    stream = await navigator.mediaDevices.getUserMedia({
-      audio: false,
-      video: {
-        facingMode: "environment",
-        width: { ideal: 1280 },
-        height: { ideal: 720 }
-      }
+    // Prefer the rear camera, but fall back to any available camera if the
+    // device/browser cannot satisfy the preferred facing mode.
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        }
+      });
+    } catch (preferredCameraError) {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: true
+      });
+    }
+
+    // Register the metadata listener before attaching the stream so a fast
+    // Android camera cannot fire the event before the listener is installed.
+    const metadataReady = new Promise((resolve, reject) => {
+      const timeout = window.setTimeout(() => reject(new Error("Camera opened but video preview did not initialise. Please retry.")), 10000);
+      video.onloadedmetadata = () => {
+        window.clearTimeout(timeout);
+        resolve();
+      };
+      video.onerror = () => {
+        window.clearTimeout(timeout);
+        reject(new Error("The browser could not display the camera preview."));
+      };
     });
 
     video.srcObject = stream;
-
-    await new Promise(resolve => {
-      video.onloadedmetadata = resolve;
-    });
-
+    await metadataReady;
     await video.play();
 
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
     video.style.display = "block";
     placeholder.style.display = "none";
 
-    await loadAI();
-
+    // Camera preview must remain available even if the optional AI model
+    // cannot load (for example, a temporary CDN/network failure).
     cameraRunning = true;
     video.loop = false;
     resetShuttleDetector();
-
+    cameraBtn.disabled = false;
     cameraBtn.textContent = "Start Recording";
     stopCameraBtn.disabled = false;
     startRecordBtn.disabled = false;
     updateCalibrationUI();
-
-    status("Camera and AI ready. Detecting players...");
-
+    status("Camera is open. Loading player detection…");
     animationId = requestAnimationFrame(detectLoop);
+
+    try {
+      await loadAI();
+      if (cameraRunning) status("Camera and AI ready. Detecting players...");
+    } catch (aiError) {
+      status("Camera is open, but AI could not load: " + aiError.message + ". You can still view the camera; retry the page later for player detection.");
+    }
 
   } catch(error) {
 
-    status("ERROR: " + error.message);
+    status("Camera error: " + error.message + ". Check browser camera permission and try again.");
 
     if (stream) {
       stream.getTracks().forEach(t => t.stop());
       stream = null;
     }
-
+    cameraRunning = false;
+    video.srcObject = null;
+    video.style.display = "none";
+    placeholder.style.display = "block";
     cameraBtn.disabled = false;
     cameraBtn.textContent = "Retry Camera";
 
@@ -1920,6 +1946,12 @@ function detectLoop() {
     lastDetectionTime = now;
 
     try {
+
+      if (!landmarker) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        animationId = requestAnimationFrame(detectLoop);
+        return;
+      }
 
       const result = landmarker.detectForVideo(
         video,
