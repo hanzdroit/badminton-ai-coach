@@ -5,7 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#081426">
-<title>Badminton AI Coach V2.9</title>
+<title>Badminton AI Coach V2.9a</title>
 
 <style>
 :root {
@@ -256,7 +256,7 @@ footer {
 <header>
   <h1>🏸 Badminton AI Coach</h1>
   <p>Live Player Detection & Skeleton Tracking</p>
-  <p>V2.9 · Upload existing video · Live record · Download or analyse · Match history</p>
+  <p>V2.9a · Upload existing video · Live record · Download or analyse · Match history</p>
 </header>
 
 <main>
@@ -470,7 +470,7 @@ footer {
 </main>
 
 <footer>
-  Badminton AI Coach V2.9 · Upload and live recording workflow
+  Badminton AI Coach V2.9a · Upload and live recording workflow
 </footer>
 
 <script type="module">
@@ -1486,6 +1486,30 @@ async function uploadVideoForAnalysis(blob, filename) {
   }
 }
 
+function addShareVideoDownload(base, jobId) {
+  const existing = document.getElementById("shareVideoDownloadLink");
+  if (existing) return;
+  const link = document.createElement("a");
+  link.id = "shareVideoDownloadLink";
+  link.href = `${base}/api/v1/jobs/${encodeURIComponent(jobId)}/share`;
+  link.textContent = "Download MP4 for WhatsApp";
+  link.download = `badminton_match_${jobId}.mp4`;
+  link.style.display = "inline-block";
+  link.style.marginTop = "12px";
+  link.style.padding = "10px 14px";
+  link.style.borderRadius = "8px";
+  link.style.background = "#176b45";
+  link.style.color = "#ffffff";
+  link.style.fontWeight = "700";
+  link.style.textDecoration = "none";
+  const note = document.createElement("p");
+  note.className = "calibration-help";
+  note.textContent = "Converted to MP4 (H.264/AAC). Download it, then attach the MP4 in WhatsApp.";
+  cloudResults.appendChild(note);
+  cloudResults.appendChild(link);
+  cloudResults.style.display = "block";
+}
+
 async function pollAnalysisJob(base, jobId) {
   const statusUrl = `${base}/api/v1/jobs/${encodeURIComponent(jobId)}`;
   const poll = async () => {
@@ -1493,6 +1517,7 @@ async function pollAnalysisJob(base, jobId) {
       const response = await fetch(statusUrl, { headers: cloudHeaders() });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const job = await response.json();
+      if (job.share_video_available) addShareVideoDownload(base, jobId);
       cloudStatus.textContent = `Cloud analysis: ${job.status || "processing"}${job.progress != null ? ` · ${job.progress}%` : ""}`;
       if (["completed", "failed", "cancelled"].includes(job.status)) {
         await refreshMatchHistory();
@@ -1506,6 +1531,7 @@ async function pollAnalysisJob(base, jobId) {
             const visible = points.filter(p => p.visibility && p.x > 0 && p.y > 0).length;
             cloudResults.innerHTML = `<strong>Analysis complete</strong><br>Video frames: ${data.video?.frame_count ?? "—"}<br>Shuttle points detected: ${visible}<br>Player movement frames: ${data.movement?.frameCount ?? 0}<br><small>Raw camera video was deleted only after stored results were successfully verified.</small>`;
             cloudResults.style.display = "block";
+            if (job.share_video_available) addShareVideoDownload(base, jobId);
           }
         } else if (job.upload?.received) {
           cloudStatus.textContent = "Video upload received successfully. AI analysis is not available yet.";
